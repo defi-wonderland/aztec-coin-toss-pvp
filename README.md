@@ -1,1 +1,1 @@
-# aztec-coin-toss-pvp
+# Aztec Coin Toss PvP

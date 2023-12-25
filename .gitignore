@@ -1,0 +1,9 @@
+# PM files:
+node_modules/
+yarn-error.log
+
+# build
+target/
+
+# MacOS frens:
+.DS_Store
