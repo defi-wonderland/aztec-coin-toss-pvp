@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "compile": "aztec-cli compile . -o './src/artifacts' -i './src/artifacts' -ts './src/artifacts'",
-    "test": "yarn compile && NODE_NO_WARNINGS=1 node --experimental-vm-modules $(yarn bin jest) --runInBand --passWithNoTests --testTimeout=50000"
+    "compile:timestamp": "aztec-cli compile ./src/timestamp -o './src/artifacts' -i './src/artifacts' -ts './src/artifacts'",
+    "test": "yarn compile:timestamp && yarn compile && NODE_NO_WARNINGS=1 node --experimental-vm-modules $(yarn bin jest) --runInBand --passWithNoTests --testTimeout=50000"
   },
   "jest": {
     "preset": "ts-jest/presets/default-esm",

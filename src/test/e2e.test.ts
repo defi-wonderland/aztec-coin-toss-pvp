@@ -18,7 +18,7 @@ import {
 
 import { initAztecJs } from "@aztec/aztec.js/init";
 
-import { BetNote, ResultNote } from "./Notes.js";
+import { BetNote } from "./Notes.js";
 import { CoinTossContract } from "../artifacts/CoinToss.js";
 import { TokenContract } from "../artifacts/token/Token.js";
 import { PrivateOracleContract } from "../artifacts/oracle/PrivateOracle.js";
