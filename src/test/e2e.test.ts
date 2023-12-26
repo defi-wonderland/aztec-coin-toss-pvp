@@ -24,7 +24,7 @@ import { TokenContract } from "../artifacts/token/Token.js";
 import { PrivateOracleContract } from "../artifacts/oracle/PrivateOracle.js";
 
 // Constants
-const CONFIG_SLOT: Fr = new Fr(1);
+const CONFIG_SLOT: Fr = new Fr(9);
 
 // Oracle storage layout
 const TOKEN_SLOT: Fr = new Fr(1);
@@ -34,6 +34,8 @@ const MINT_TOKENS = 100000n;
 
 const ORACLE_FEE = 100n;
 const BET_AMOUNT = 1337n;
+
+const PHASE_LENGTH = 10n * 60n; // 10 minutes
 
 // Global variables
 let pxe: PXE;
@@ -86,7 +88,8 @@ describe("E2E Coin Toss", () => {
       divinity.getAddress(),
       oracle.address,
       token.address,
-      BET_AMOUNT
+      BET_AMOUNT,
+      PHASE_LENGTH
     )
       .send()
       .wait();
@@ -107,8 +110,18 @@ describe("E2E Coin Toss", () => {
     );
   }, 200_000);
 
-  it('works', () => {
-    expect(true).toBe(true);
+  it('saves the public variables correctly', async () => {
+    const _phaseLength = await coinToss.methods.get_phase_length_unconstrained().view();
+    const _betAmount = await coinToss.methods.get_bet_amount_unconstrained().view();
+    const _oracle = await coinToss.methods.get_oracle_address_unconstrained().view();
+    const _divinity = await coinToss.methods.get_divinity_address_unconstrained().view();
+    const _token = await coinToss.methods.get_token_address_unconstrained().view();
+    
+    expect(new Fr(_token.address)).toStrictEqual(token.address);
+    expect(new Fr(_oracle.address)).toStrictEqual(oracle.address);
+    expect(AztecAddress.fromBigInt(_divinity.address)).toStrictEqual(divinity.getAddress());
+    expect(_betAmount).toBe(BET_AMOUNT);
+    expect(_phaseLength).toBe(PHASE_LENGTH);
   })
 });
 

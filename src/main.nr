@@ -19,6 +19,7 @@ contract CoinToss {
     use crate::types::{
         bet_note::{BetNote, BetNoteMethods, BET_NOTE_LEN},
         config_note::{ConfigNote, ConfigNoteMethods, CONFIG_NOTE_LEN},
+        round_data::{RoundData, RoundDataSerializationMethods, ROUND_DATA_SERIALIZED_LEN},
         token::{
             AccountsBroadcastEscrowNoteForStruct,
             FromEscrowStruct,
@@ -33,7 +34,11 @@ contract CoinToss {
 
     use dep::aztec::{
         context::Context,
-        log::emit_encrypted_log,
+        types::type_serialization::{
+            field_serialization::{FieldSerializationMethods, FIELD_SERIALIZED_LEN},
+            bool_serialization::{BoolSerializationMethods, BOOL_SERIALIZED_LEN},
+            aztec_address_serialization::{AztecAddressSerializationMethods, AZTEC_ADDRESS_SERIALIZED_LEN},
+        },
         note::{
             note_getter_options::NoteGetterOptions,
             note_header::NoteHeader,
@@ -47,9 +52,11 @@ contract CoinToss {
         selector::compute_selector,
         state_vars::{
             immutable_singleton::ImmutableSingleton,
-            set::Set
+            set::Set,
+            map::Map, 
+            public_state::PublicState
         },
-        types::address::AztecAddress
+        types::address::AztecAddress,
     };
 
     use dep::std::option::Option;
@@ -58,12 +65,31 @@ contract CoinToss {
     //                             Storage                             //
     /////////////////////////////////////////////////////////////////////
 
-    global CONFIG_NOTE_SLOT = 1;
-    global BETS_SLOT = 2;
+    global ROUND_ID_SLOT = 1;
+    global PHASE_LENGHT_SLOT = 2;
+    global BET_AMOUNT_SLOT = 3;
+    global ORACLE_ADDRESS_SLOT = 4;
+    global DIVINITY_ADDRESS_SLOT = 5;
+    global TOKEN_ADDRESS_SLOT = 6;
+    global RESULTS_SLOT = 7;
+    global ROUND_DATA_SLOT = 8;
+    global CONFIG_NOTE_SLOT = 9;
+    global BETS_SLOT = 10;
 
     /// @member config The config note, containing the divinity address, the private oracle address, the token address and the bet amount
     /// @member bets The set of bet notes (ie active bets)
     struct Storage {
+        ////////////////////////////// public //////////////////////////
+        round_id: PublicState<Field, FIELD_SERIALIZED_LEN>,
+        phase_lenght: PublicState<Field, FIELD_SERIALIZED_LEN>,
+        bet_amount: PublicState<Field, FIELD_SERIALIZED_LEN>,
+        oracle_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
+        divinity_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
+        token_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
+        results: Map<PublicState<bool, BOOL_SERIALIZED_LEN>>,
+        round_data: Map<PublicState<RoundData, ROUND_DATA_SERIALIZED_LEN>>,
+
+        ///////////////////////////// private //////////////////////////
         config: ImmutableSingleton<ConfigNote, CONFIG_NOTE_LEN>,
         bets: Set<BetNote, BET_NOTE_LEN>,
     }
@@ -71,6 +97,37 @@ contract CoinToss {
     impl Storage {
         fn init(context: Context) -> Self {
             Storage {
+                ////////////////////////////// public //////////////////////////
+                round_id: PublicState::new(context, ROUND_ID_SLOT, FieldSerializationMethods),
+                phase_lenght: PublicState::new(context, PHASE_LENGHT_SLOT, FieldSerializationMethods),
+                bet_amount: PublicState::new(context, BET_AMOUNT_SLOT, FieldSerializationMethods),
+                oracle_address: PublicState::new(context, ORACLE_ADDRESS_SLOT, AztecAddressSerializationMethods),
+                divinity_address: PublicState::new(context, DIVINITY_ADDRESS_SLOT, AztecAddressSerializationMethods),
+                token_address: PublicState::new(context, TOKEN_ADDRESS_SLOT, AztecAddressSerializationMethods),
+                results: Map::new(
+                    context,
+                    RESULTS_SLOT,
+                    |context, slot| {
+                        PublicState::new(
+                            context,
+                            slot,
+                            BoolSerializationMethods,
+                        )
+                    },
+                ),
+                 round_data: Map::new(
+                    context,
+                    ROUND_DATA_SLOT,
+                    |context, slot| {
+                        PublicState::new(
+                            context,
+                            slot,
+                            RoundDataSerializationMethods,
+                        )
+                    },
+                ),
+
+                ////////////////////////////// private //////////////////////////
                 config: ImmutableSingleton::new(
                     context,
                     CONFIG_NOTE_SLOT,
@@ -91,10 +148,26 @@ contract CoinToss {
     /// @param          private_oracle The private oracle contract address
     /// @param          token The token used to bet
     /// @param          bet_amount The bet amount
+    /// @param          phase_length The phase length
     #[aztec(private)]
-    fn constructor(divinity: AztecAddress, private_oracle: AztecAddress, token: AztecAddress, bet_amount: Field) {
+    fn constructor(divinity: AztecAddress, private_oracle: AztecAddress, token: AztecAddress, bet_amount: Field, phase_length: Field) {
         let mut config_note = ConfigNote::new(divinity, private_oracle, token, bet_amount);
         storage.config.initialize(&mut config_note, Option::none(), false);
+
+        let selector = compute_selector("initialize(Field,Field,(Field),(Field),(Field))");
+        context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
+    }
+
+    // Update the payment token and fee getters
+    #[aztec(public)]
+    fn initialize(phase_lenght: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
+        assert(context.msg_sender() == context.this_address());
+
+        storage.phase_lenght.write(phase_lenght);
+        storage.bet_amount.write(bet_amount);
+        storage.oracle_address.write(oracle_address);
+        storage.divinity_address.write(divinity_address);
+        storage.token_address.write(token_address);
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -135,5 +208,25 @@ contract CoinToss {
     unconstrained fn compute_note_hash_and_nullifier(contract_address: Field, nonce: Field, storage_slot: Field, preimage: [Field; CONFIG_NOTE_LEN]) -> [Field; 4] {
         let note_header = NoteHeader::new(contract_address, nonce, storage_slot);
         note_utils::compute_note_hash_and_nullifier(ConfigNoteMethods, note_header, preimage)
+    }
+
+    unconstrained fn get_phase_length_unconstrained() -> Field {
+        storage.phase_lenght.read()
+    }
+
+    unconstrained fn get_bet_amount_unconstrained() -> Field {
+        storage.bet_amount.read()
+    }
+
+    unconstrained fn get_oracle_address_unconstrained() -> AztecAddress {
+        storage.oracle_address.read()
+    }
+
+    unconstrained fn get_divinity_address_unconstrained() -> AztecAddress {
+        storage.divinity_address.read()
+    }
+
+    unconstrained fn get_token_address_unconstrained() -> AztecAddress {
+        storage.token_address.read()
     }
 }
