@@ -35,7 +35,7 @@ const MINT_TOKENS = 100000n;
 const ORACLE_FEE = 100n;
 const BET_AMOUNT = 1337n;
 
-const PHASE_LENGTH = 10n * 60n; // 10 minutes
+const PHASE_LENGTH = 10 * 60; // 10 minutes
 
 // Global variables
 let pxe: PXE;
@@ -121,8 +121,42 @@ describe("E2E Coin Toss", () => {
     expect(new Fr(_oracle.address)).toStrictEqual(oracle.address);
     expect(AztecAddress.fromBigInt(_divinity.address)).toStrictEqual(divinity.getAddress());
     expect(_betAmount).toBe(BET_AMOUNT);
-    expect(_phaseLength).toBe(PHASE_LENGTH);
+    expect(Number(_phaseLength)).toBe(PHASE_LENGTH);
   })
+
+  describe('start_next_round', () => {
+
+    let roundId = 0n;
+    const maxDelta = 15;
+
+    it('goes to the next round when called', async () => {
+      // Get the current round id. It should be 0
+      const currentRoundId = await coinToss.methods.get_round_id().view();
+      expect(currentRoundId).toBe(roundId);
+
+      // Advance the round
+      await coinToss.methods.start_next_round().send().wait();
+      roundId++;
+
+      // Get the current round id. It should be 0
+      const nextRoundId = await coinToss.methods.get_round_id().view();
+      expect(nextRoundId).toBe(roundId);
+    });
+
+    it('updates the phase end timestamp', async () => {
+      const expectedPhaseEnd = Math.floor(new Date().getTime() / 1000) + Number(PHASE_LENGTH);
+      const currentRound = await coinToss.methods.get_round_data(roundId).view();
+      expect(Number(currentRound.current_phase_end)).toBeGreaterThanOrEqual(expectedPhaseEnd - maxDelta)
+      expect(Number(currentRound.current_phase_end)).toBeLessThanOrEqual(expectedPhaseEnd + maxDelta)
+    });
+
+    it('reverts when trying to advance a round and the previous one did not finish', async () => {
+      let startNextRoundTx = coinToss.methods.start_next_round().simulate();
+      await expect(startNextRoundTx)
+        .rejects
+        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Current round not finished 'current_round_data.phase >= Phase::REVEAL'");
+    });
+  });
 });
 
 // Create an array of mock bet notes

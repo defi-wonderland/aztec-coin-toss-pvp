@@ -1,8 +1,15 @@
 use dep::aztec::types::type_serialization::TypeSerializationInterface;
 
+mod Phase {
+    global BETTING: u120 = 1;
+    global AWAITING_ANSWER: u120 = 2;
+    global REVEAL: u120 = 3;
+    global CLAIM: u120 = 4;
+}
+
 struct RoundData {
-    phase: u120,
-    current_phase_end: u120,
+    phase: u120, 
+    current_phase_end: u120, 
     reveals_count: u120,
     betters: u120
 }

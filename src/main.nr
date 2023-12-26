@@ -19,7 +19,7 @@ contract CoinToss {
     use crate::types::{
         bet_note::{BetNote, BetNoteMethods, BET_NOTE_LEN},
         config_note::{ConfigNote, ConfigNoteMethods, CONFIG_NOTE_LEN},
-        round_data::{RoundData, RoundDataSerializationMethods, ROUND_DATA_SERIALIZED_LEN},
+        round_data::{RoundData, RoundDataSerializationMethods, ROUND_DATA_SERIALIZED_LEN, Phase},
         token::{
             AccountsBroadcastEscrowNoteForStruct,
             FromEscrowStruct,
@@ -66,7 +66,7 @@ contract CoinToss {
     /////////////////////////////////////////////////////////////////////
 
     global ROUND_ID_SLOT = 1;
-    global PHASE_LENGHT_SLOT = 2;
+    global PHASE_LENGTH_SLOT = 2;
     global BET_AMOUNT_SLOT = 3;
     global ORACLE_ADDRESS_SLOT = 4;
     global DIVINITY_ADDRESS_SLOT = 5;
@@ -81,13 +81,13 @@ contract CoinToss {
     struct Storage {
         ////////////////////////////// public //////////////////////////
         round_id: PublicState<Field, FIELD_SERIALIZED_LEN>,
-        phase_lenght: PublicState<Field, FIELD_SERIALIZED_LEN>,
+        phase_length: PublicState<Field, FIELD_SERIALIZED_LEN>,
         bet_amount: PublicState<Field, FIELD_SERIALIZED_LEN>,
         oracle_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
         divinity_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
         token_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
         results: Map<PublicState<bool, BOOL_SERIALIZED_LEN>>,
-        round_data: Map<PublicState<RoundData, ROUND_DATA_SERIALIZED_LEN>>,
+        rounds: Map<PublicState<RoundData, ROUND_DATA_SERIALIZED_LEN>>,
 
         ///////////////////////////// private //////////////////////////
         config: ImmutableSingleton<ConfigNote, CONFIG_NOTE_LEN>,
@@ -99,7 +99,7 @@ contract CoinToss {
             Storage {
                 ////////////////////////////// public //////////////////////////
                 round_id: PublicState::new(context, ROUND_ID_SLOT, FieldSerializationMethods),
-                phase_lenght: PublicState::new(context, PHASE_LENGHT_SLOT, FieldSerializationMethods),
+                phase_length: PublicState::new(context, PHASE_LENGTH_SLOT, FieldSerializationMethods),
                 bet_amount: PublicState::new(context, BET_AMOUNT_SLOT, FieldSerializationMethods),
                 oracle_address: PublicState::new(context, ORACLE_ADDRESS_SLOT, AztecAddressSerializationMethods),
                 divinity_address: PublicState::new(context, DIVINITY_ADDRESS_SLOT, AztecAddressSerializationMethods),
@@ -115,7 +115,7 @@ contract CoinToss {
                         )
                     },
                 ),
-                 round_data: Map::new(
+                 rounds: Map::new(
                     context,
                     ROUND_DATA_SLOT,
                     |context, slot| {
@@ -160,14 +160,33 @@ contract CoinToss {
 
     // Update the payment token and fee getters
     #[aztec(public)]
-    fn initialize(phase_lenght: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
+    fn initialize(phase_length: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
         assert(context.msg_sender() == context.this_address());
 
-        storage.phase_lenght.write(phase_lenght);
+        storage.phase_length.write(phase_length);
         storage.bet_amount.write(bet_amount);
         storage.oracle_address.write(oracle_address);
         storage.divinity_address.write(divinity_address);
         storage.token_address.write(token_address);
+    }
+
+    /////////////////////////////////////////////////////////////////////
+    //                   Public external functions                    //
+    /////////////////////////////////////////////////////////////////////
+
+    #[aztec(public)]
+    fn start_next_round() {
+        let timestamp = context.timestamp();
+        let phase_length = storage.phase_length.read();
+
+        let current_round_id = storage.round_id.read();
+        if(current_round_id != 0) {
+            let current_round_data = storage.rounds.at(storage.round_id.read()).read();
+            assert(current_round_data.phase >= Phase::REVEAL, "Current round not finished");
+        }
+        let next_round_id = current_round_id + 1;
+        storage.round_id.write(next_round_id);
+        storage.rounds.at(next_round_id).write(RoundData::new(1, (timestamp + phase_length) as u120, 0, 0));
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -211,7 +230,7 @@ contract CoinToss {
     }
 
     unconstrained fn get_phase_length_unconstrained() -> Field {
-        storage.phase_lenght.read()
+        storage.phase_length.read()
     }
 
     unconstrained fn get_bet_amount_unconstrained() -> Field {
@@ -228,5 +247,13 @@ contract CoinToss {
 
     unconstrained fn get_token_address_unconstrained() -> AztecAddress {
         storage.token_address.read()
+    }
+
+    unconstrained fn get_round_id() -> Field {
+        storage.round_id.read()
+    }
+
+    unconstrained fn get_round_data(round_id: Field) -> RoundData {
+        storage.rounds.at(round_id).read()
     }
 }
