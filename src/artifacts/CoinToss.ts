@@ -55,14 +55,14 @@ export class CoinTossContract extends ContractBase {
   /**
    * Creates a tx to deploy a new instance of this contract.
    */
-  public static deploy(wallet: Wallet, divinity: AztecAddressLike, private_oracle: AztecAddressLike, token: AztecAddressLike, bet_amount: FieldLike) {
+  public static deploy(wallet: Wallet, divinity: AztecAddressLike, private_oracle: AztecAddressLike, token: AztecAddressLike, bet_amount: FieldLike, phase_length: FieldLike) {
     return new DeployMethod<CoinTossContract>(Point.ZERO, wallet, CoinTossContractArtifact, Array.from(arguments).slice(1));
   }
 
   /**
    * Creates a tx to deploy a new instance of this contract using the specified public key to derive the address.
    */
-  public static deployWithPublicKey(publicKey: PublicKey, wallet: Wallet, divinity: AztecAddressLike, private_oracle: AztecAddressLike, token: AztecAddressLike, bet_amount: FieldLike) {
+  public static deployWithPublicKey(publicKey: PublicKey, wallet: Wallet, divinity: AztecAddressLike, private_oracle: AztecAddressLike, token: AztecAddressLike, bet_amount: FieldLike, phase_length: FieldLike) {
     return new DeployMethod<CoinTossContract>(publicKey, wallet, CoinTossContractArtifact, Array.from(arguments).slice(2));
   }
   
@@ -82,10 +82,28 @@ export class CoinTossContract extends ContractBase {
     /** compute_note_hash_and_nullifier(contract_address: field, nonce: field, storage_slot: field, preimage: array) */
     compute_note_hash_and_nullifier: ((contract_address: FieldLike, nonce: FieldLike, storage_slot: FieldLike, preimage: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** get_bet_amount_unconstrained() */
+    get_bet_amount_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** get_config_unconstrained() */
     get_config_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** get_divinity_address_unconstrained() */
+    get_divinity_address_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** get_oracle_address_unconstrained() */
+    get_oracle_address_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** get_phase_length_unconstrained() */
+    get_phase_length_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** get_token_address_unconstrained() */
+    get_token_address_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** get_user_bets_unconstrained(start_offset: integer) */
     get_user_bets_unconstrained: ((start_offset: (bigint | number)) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** initialize(phase_lenght: field, bet_amount: field, oracle_address: struct, divinity_address: struct, token_address: struct) */
+    initialize: ((phase_lenght: FieldLike, bet_amount: FieldLike, oracle_address: AztecAddressLike, divinity_address: AztecAddressLike, token_address: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
   };
 }
