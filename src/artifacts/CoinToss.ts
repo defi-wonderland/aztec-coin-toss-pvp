@@ -97,13 +97,22 @@ export class CoinTossContract extends ContractBase {
     /** get_phase_length_unconstrained() */
     get_phase_length_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** get_round_data(round_id: field) */
+    get_round_data: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** get_round_id() */
+    get_round_id: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** get_token_address_unconstrained() */
     get_token_address_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** get_user_bets_unconstrained(start_offset: integer) */
     get_user_bets_unconstrained: ((start_offset: (bigint | number)) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** initialize(phase_lenght: field, bet_amount: field, oracle_address: struct, divinity_address: struct, token_address: struct) */
-    initialize: ((phase_lenght: FieldLike, bet_amount: FieldLike, oracle_address: AztecAddressLike, divinity_address: AztecAddressLike, token_address: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+    /** initialize(phase_length: field, bet_amount: field, oracle_address: struct, divinity_address: struct, token_address: struct) */
+    initialize: ((phase_length: FieldLike, bet_amount: FieldLike, oracle_address: AztecAddressLike, divinity_address: AztecAddressLike, token_address: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** start_next_round() */
+    start_next_round: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
   };
 }
