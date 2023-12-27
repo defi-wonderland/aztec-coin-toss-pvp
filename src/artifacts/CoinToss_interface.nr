@@ -67,6 +67,24 @@ impl CoinTossPrivateContextInterface {
   }
   
 
+  pub fn oracle_callback(
+    self,
+    context: &mut PrivateContext,
+    answer: Field,
+    data: [Field;5]
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 6];
+    serialized_args[0] = answer;
+    serialized_args[1] = data[0];
+    serialized_args[2] = data[1];
+    serialized_args[3] = data[2];
+    serialized_args[4] = data[3];
+    serialized_args[5] = data[4];
+
+    context.call_private_function(self.address, 0x8853c9d8, serialized_args)
+  }
+  
+
   pub fn roll(
     self,
     context: &mut PrivateContext,
