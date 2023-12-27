@@ -158,18 +158,6 @@ contract CoinToss {
         context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
     }
 
-    // Update the payment token and fee getters
-    #[aztec(public)]
-    fn initialize(phase_length: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
-        assert(context.msg_sender() == context.this_address());
-
-        storage.phase_length.write(phase_length);
-        storage.bet_amount.write(bet_amount);
-        storage.oracle_address.write(oracle_address);
-        storage.divinity_address.write(divinity_address);
-        storage.token_address.write(token_address);
-    }
-
     /////////////////////////////////////////////////////////////////////
     //                   Public external functions                    //
     /////////////////////////////////////////////////////////////////////
@@ -186,12 +174,76 @@ contract CoinToss {
         }
         let next_round_id = current_round_id + 1;
         storage.round_id.write(next_round_id);
-        storage.rounds.at(next_round_id).write(RoundData::new(1, (timestamp + phase_length) as u120, 0, 0));
+        storage.rounds.at(next_round_id).write(RoundData::new(Phase::BETTING, (timestamp + phase_length) as u120, 0, 0));
+    }
+
+    /////////////////////////////////////////////////////////////////////
+    //                   Public internal functions                    //
+    /////////////////////////////////////////////////////////////////////
+
+    #[aztec(public)]
+    fn initialize(phase_length: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
+        assert(context.msg_sender() == context.this_address());
+
+        storage.phase_length.write(phase_length);
+        storage.bet_amount.write(bet_amount);
+        storage.oracle_address.write(oracle_address);
+        storage.divinity_address.write(divinity_address);
+        storage.token_address.write(token_address);
+    }
+
+    #[aztec(public)]
+    internal fn end_bet_phase(round_id: Field) {
+        let timestamp = context.timestamp() as u120;
+        let phase_length = storage.phase_length.read() as u120;
+
+        // Check that the phase is BETTING 
+        let current_round_id = storage.round_id.read();
+        assert(round_id == current_round_id, "Round id mismatch");
+
+        let current_round_data = storage.rounds.at(storage.round_id.read()).read();
+        assert(current_round_data.phase == Phase::BETTING, "Not in bet phase");
+
+        // Check that the timestamp is after the end of the bet phase
+        assert(timestamp >= current_round_data.current_phase_end, "Bet phase not finished");
+
+        // Set state to AWAITING_ANSWER and update the end phase timestamp
+        let new_round_data = RoundData::new(Phase::AWAITING_ANSWER, (timestamp + phase_length) as u120, 0, current_round_data.bettors);
+        storage.rounds.at(current_round_id).write(new_round_data);
     }
 
     /////////////////////////////////////////////////////////////////////
     //                   Private external functions                    //
     /////////////////////////////////////////////////////////////////////
+
+    /// @notice         Calls the oracle to get the result of the bet round
+    /// @custom:privacy private
+    /// @param          round_id The id of the current round
+    #[aztec(private)]
+    fn roll(round_id: Field, oracle_nonce: Field) {
+        let sender = AztecAddress::new(context.msg_sender());
+        let config_note = storage.config.get_note();
+        let divinity = config_note.divinity;
+        let oracle = config_note.private_oracle;
+        let oracle_contract = PrivateOraclePrivateContextInterface::at(oracle.address);
+        let address_this = AztecAddress::new(context.this_address());
+
+        // Create the question in the oracle
+        let callback = [address_this.address, round_id, 0, 0, 0, 0];
+        let __ = oracle_contract.submit_question(
+            &mut context,
+            FromSubmitQuestionStruct { address: sender.address },
+            round_id,
+            DivinityAddressSubmitQuestionStruct { address: divinity.address },
+            oracle_nonce,
+            callback
+        );
+
+        // End the bet phase and update public state
+        // This checks that the round id is correct and that the phase is BETTING
+        let selector = compute_selector("end_bet_phase(Field)");
+        context.call_public_function(context.this_address(), selector, [round_id]);
+    }
 
     /////////////////////////////////////////////////////////////////////
     //                   Private internal functions                    //

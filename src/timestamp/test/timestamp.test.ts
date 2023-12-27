@@ -1,5 +1,6 @@
 import {
     AccountWalletWithPrivateKey,
+    CheatCodes,
     createPXEClient,
     getSandboxAccountsWallets,
     PXE,
@@ -10,17 +11,19 @@ import {
   
   import { TimestampContract } from "../src/artifacts/Timestamp.js";
   
-  const JITTER = 60n; // 1 minute
+  const JITTER = 10n*60n; // 10 minutes
 
   // Global variables
   let pxe: PXE;
+  let cc: CheatCodes;
   let timestamp: TimestampContract;
   let user: AccountWalletWithPrivateKey;
   
   // Setup: Set the sandbox up and get the accounts
   beforeAll(async () => {
-    const { SANDBOX_URL = "http://localhost:8080" } = process.env;
-    pxe = createPXEClient(SANDBOX_URL);
+    const { PXE_URL = "http://localhost:8080", SANDBOX_URL = "http://localhost:8545" } = process.env;
+    pxe = createPXEClient(PXE_URL);
+    cc = await CheatCodes.create(SANDBOX_URL, pxe);
   
     [, [user]] = await Promise.all([
       waitForSandbox(pxe),
@@ -40,30 +43,42 @@ import {
     }, 200_000);
   
     it('passes when the timestamp provided equals the real one', async () => {
-      const validateTimestampTx = timestamp.withWallet(user).methods.validate_timestamp(currentTimestamp(), JITTER).simulate();
+      const time = await nextTimestamp();
+      await cc.aztec.warp(time);
+
+      const validateTimestampTx = timestamp.withWallet(user).methods.validate_timestamp(time + 10, JITTER).simulate();
       await expect(validateTimestampTx).resolves.toBeDefined();
     })
 
     it('passes when the timestamp provided equals the real one with the max jitter', async () => {
-      const validateTimestampTx = timestamp.withWallet(user).methods.validate_timestamp(currentTimestamp() - Number(JITTER) + 10, JITTER).simulate();
+      const time = await nextTimestamp();
+      await cc.aztec.warp(time);
+      
+      const validateTimestampTx = timestamp.withWallet(user).methods.validate_timestamp(time + Number(JITTER) - 10, JITTER).simulate();
       await expect(validateTimestampTx).resolves.toBeDefined();
     })
 
     it('fails when the timestamp provided is in the past', async () => {
-      const validateTimestampTx = timestamp.withWallet(user).methods.validate_timestamp(currentTimestamp() - 1, JITTER).simulate();
+      const time = await nextTimestamp();
+      await cc.aztec.warp(time);
+
+      const validateTimestampTx = timestamp.withWallet(user).methods.validate_timestamp(time - 100000, JITTER).simulate();
       await expect(validateTimestampTx).rejects.toThrow(
-        "(JSON-RPC PROPAGATED) Assertion failed: Future timestamp 'provided_timestamp <= timestamp'"
+        "(JSON-RPC PROPAGATED) Assertion failed: Past timestamp 'provided_timestamp >= timestamp'"
       );
     });
 
     it('fails when the timestamp provided is in the future', async () => {
-      const validateTimestampTx = timestamp.withWallet(user).methods.validate_timestamp(currentTimestamp() + Number(JITTER) + 1, JITTER).simulate();
+      const time = await nextTimestamp();
+      await cc.aztec.warp(time);
+
+      const validateTimestampTx = timestamp.withWallet(user).methods.validate_timestamp(time + Number(JITTER) + 1, JITTER).simulate();
       await expect(validateTimestampTx).rejects.toThrow(
-        "(JSON-RPC PROPAGATED) Assertion failed: Future timestamp 'provided_timestamp <= timestamp'"
+        "(JSON-RPC PROPAGATED) Assertion failed: Future timestamp 'provided_timestamp <= timestamp + jitter'"
       );
     });
   });
 
-  const currentTimestamp = () => {
-    return Math.floor(new Date().getTime() / 1000);
+  const nextTimestamp = async () => {
+    return await cc.eth.timestamp() + 1;
   }

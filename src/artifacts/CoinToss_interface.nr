@@ -49,6 +49,20 @@ impl CoinTossPrivateContextInterface {
   }
   
 
+  pub fn roll(
+    self,
+    context: &mut PrivateContext,
+    round_id: Field,
+    oracle_nonce: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 2];
+    serialized_args[0] = round_id;
+    serialized_args[1] = oracle_nonce;
+
+    context.call_private_function(self.address, 0xd80c5f82, serialized_args)
+  }
+  
+
   pub fn start_next_round(
     self,
     context: &mut PrivateContext

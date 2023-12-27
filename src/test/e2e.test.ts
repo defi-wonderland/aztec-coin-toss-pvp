@@ -2,6 +2,7 @@ import {
   AccountWalletWithPrivateKey,
   AztecAddress,
   BatchCall,
+  CheatCodes,
   computeAuthWitMessageHash,
   computeMessageSecretHash,
   ContractFunctionInteraction,
@@ -13,6 +14,7 @@ import {
   Note,
   PXE,
   TxHash,
+  TxStatus,
   waitForSandbox,
 } from "@aztec/aztec.js";
 
@@ -39,6 +41,7 @@ const PHASE_LENGTH = 10 * 60; // 10 minutes
 
 // Global variables
 let pxe: PXE;
+let cc: CheatCodes;
 let coinToss: CoinTossContract;
 let token: TokenContract;
 let oracle: PrivateOracleContract;
@@ -51,8 +54,9 @@ let deployer: AccountWalletWithPrivateKey;
 
 // Setup: Set the sandbox up and get the accounts
 beforeAll(async () => {
-  const { SANDBOX_URL = "http://localhost:8080" } = process.env;
-  pxe = createPXEClient(SANDBOX_URL);
+  const { PXE_URL = "http://localhost:8080", SANDBOX_URL = "http://localhost:8545" } = process.env;
+  pxe = createPXEClient(PXE_URL);
+  cc = await CheatCodes.create(SANDBOX_URL, pxe);
 
   [, [user, divinity, user2], deployer, user3] = await Promise.all([
     waitForSandbox(pxe),
@@ -64,6 +68,8 @@ beforeAll(async () => {
 }, 120_000);
 
 describe("E2E Coin Toss", () => {
+
+  let roundId = 0n;
 
   // Setup: Deploy the contracts and mint tokens, ready for escrow
   beforeAll(async () => {
@@ -126,13 +132,15 @@ describe("E2E Coin Toss", () => {
 
   describe('start_next_round', () => {
 
-    let roundId = 0n;
-    const maxDelta = 15;
+    let currentTime: number;
 
     it('goes to the next round when called', async () => {
       // Get the current round id. It should be 0
       const currentRoundId = await coinToss.methods.get_round_id().view();
       expect(currentRoundId).toBe(roundId);
+
+      currentTime = await cc.eth.timestamp() + 1;
+      await cc.aztec.warp(currentTime);
 
       // Advance the round
       await coinToss.methods.start_next_round().send().wait();
@@ -144,10 +152,9 @@ describe("E2E Coin Toss", () => {
     });
 
     it('updates the phase end timestamp', async () => {
-      const expectedPhaseEnd = Math.floor(new Date().getTime() / 1000) + Number(PHASE_LENGTH);
+      const expectedTimestamp = currentTime + PHASE_LENGTH;
       const currentRound = await coinToss.methods.get_round_data(roundId).view();
-      expect(Number(currentRound.current_phase_end)).toBeGreaterThanOrEqual(expectedPhaseEnd - maxDelta)
-      expect(Number(currentRound.current_phase_end)).toBeLessThanOrEqual(expectedPhaseEnd + maxDelta)
+      expect(Number(currentRound.current_phase_end)).toBe(expectedTimestamp)
     });
 
     it('reverts when trying to advance a round and the previous one did not finish', async () => {
@@ -155,6 +162,46 @@ describe("E2E Coin Toss", () => {
       await expect(startNextRoundTx)
         .rejects
         .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Current round not finished 'current_round_data.phase >= Phase::REVEAL'");
+    });
+  });
+
+  describe('roll', () => {
+    let nonce = Fr.random();
+    let callback;
+    let betPhaseEnd: number;
+    
+    beforeAll(async () => {
+      callback = [coinToss.address, roundId, 0, 0, 0, 0];
+
+      // Create auth for user to escrow tokens to the oracle
+      const escrowAction = token.methods.escrow(user.getAddress(), oracle.address, ORACLE_FEE, nonce);
+      await createAuth(escrowAction, user, oracle.address);
+
+      // Create auth for coin toss to create a question for the user
+      const submitQuestionAction = oracle.methods.submit_question(user.getAddress(), roundId, divinity.getAddress(), nonce, callback);
+      await createAuth(submitQuestionAction, user, coinToss.address);
+    });
+
+    it('reverts if the betting phase did not end', async () => {
+      const rollTx = coinToss.withWallet(user).methods.roll(roundId, nonce).simulate();
+      await expect(rollTx).rejects.toThrow("(JSON-RPC PROPAGATED) Assertion failed: Bet phase not finished 'timestamp >= current_round_data.current_phase_end'");
+    });
+    
+    it('tx is mined', async () => {
+      // Advance time
+      const currentRound = await coinToss.methods.get_round_data(roundId).view();
+      betPhaseEnd = Number(currentRound.current_phase_end);
+      await cc.aztec.warp(betPhaseEnd + 1);
+
+      // Roll
+      const rollReceipt = await coinToss.withWallet(user).methods.roll(roundId, nonce).send().wait();
+      expect(rollReceipt.status).toBe(TxStatus.MINED);
+    })
+
+    it('updated the round data', async () => {
+      const currentRound = await coinToss.methods.get_round_data(roundId).view();
+      expect(currentRound.phase).toBe(2n);
+      expect(Number(currentRound.current_phase_end)).toBe(betPhaseEnd + 1 + PHASE_LENGTH);
     });
   });
 });
