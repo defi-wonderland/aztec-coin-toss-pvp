@@ -85,6 +85,20 @@ impl CoinTossPrivateContextInterface {
   }
   
 
+  pub fn reveal(
+    self,
+    context: &mut PrivateContext,
+    round_id: Field,
+    user_randomness: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 2];
+    serialized_args[0] = round_id;
+    serialized_args[1] = user_randomness;
+
+    context.call_private_function(self.address, 0xb8886ebe, serialized_args)
+  }
+  
+
   pub fn roll(
     self,
     context: &mut PrivateContext,

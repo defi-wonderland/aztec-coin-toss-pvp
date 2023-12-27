@@ -20,7 +20,7 @@ import {
 
 import { initAztecJs } from "@aztec/aztec.js/init";
 
-import { BetNote } from "./Notes.js";
+import { BetNote, RevealNote } from "./Notes.js";
 import { CoinTossContract } from "../artifacts/CoinToss.js";
 import { TokenContract } from "../artifacts/token/Token.js";
 import { PrivateOracleContract } from "../artifacts/oracle/PrivateOracle.js";
@@ -71,6 +71,7 @@ describe("E2E Coin Toss", () => {
 
   let roundId = 0n;
   let firstBet: BetNote;
+  let answer: number;
 
   // Setup: Deploy the contracts and mint tokens, ready for escrow
   beforeAll(async () => {
@@ -178,7 +179,7 @@ describe("E2E Coin Toss", () => {
 
       // Simulate the transaction
       const betTx = coinToss.withWallet(user).methods.bet(firstBet.bet, wrongRoundId, firstBet.randomness, unshieldNonce).simulate();
-      await expect(betTx).rejects.toThrow("(JSON-RPC PROPAGATED) Assertion failed: Round id does not match current round id 'current_round_id == round_id'");    
+      await expect(betTx).rejects.toThrow("(JSON-RPC PROPAGATED) Assertion failed: Round id mismatch 'current_round_id == round_id'");    
     })
 
     it.skip("reverts if the betting phase is over", async () => {
@@ -282,7 +283,6 @@ describe("E2E Coin Toss", () => {
 
   describe('oracle_callback', () => {
     let currentTime: number;
-    let answer: number;
 
     it('tx gets mined', async () => {
       answer = Number(firstBet.bet);
@@ -312,6 +312,66 @@ describe("E2E Coin Toss", () => {
         .rejects
         .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Caller is not the oracle 'caller == oracle.address'");
     });
+  });
+
+  describe('reveal', () => {
+    it('tx gets mined', async () => {
+      const receipt = await coinToss.withWallet(user).methods.reveal(roundId, firstBet.randomness).send().wait();
+      expect(receipt.status).toBe(TxStatus.MINED);
+    });
+
+    it('nullifies bet note', async () => {
+      const betNote = (
+        await coinToss
+          .withWallet(user)
+          .methods.get_user_bets_unconstrained(0n)
+          .view({ from: user.getAddress() })
+      ).find((noteObj: any) => noteObj._value.randomness == firstBet.randomness && noteObj._value.round_id == firstBet.round_id);
+
+      expect(betNote).toBeUndefined();
+    });
+
+    it('creates reveal note for the user', async () => {
+      const revealNote = new RevealNote(
+        (
+          await coinToss
+            .withWallet(user)
+            .methods.get_reveal_notes_unconstrained(0n)
+            .view({ from: user.getAddress() })
+        )[0]._value
+      );
+
+      // Check: Compare the note's data with the expected values
+      const expectedRevealNote: RevealNote = {
+        owner: firstBet.owner,
+        round_id: roundId,
+        randomness: firstBet.randomness
+      };
+
+      expect(expectedRevealNote).toEqual(expect.objectContaining(revealNote));
+    });
+
+    it('increases reveal count in the round data', async () => {
+      const currentRound = await coinToss.methods.get_round_data(roundId).view();
+      expect(currentRound.reveals_count).toBe(1n);
+    });
+
+    it('reverts if there is no matching bet note', async () => {
+      const revealTx = coinToss.withWallet(user).methods.reveal(roundId, firstBet.randomness).simulate();
+      await expect(revealTx)
+      .rejects
+      .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Bet note not found 'false'");
+    });
+
+    it.skip('reverts if the round id is incorrect', async () => {
+    });
+
+    it.skip('reverts if the phase is not reveal', async () => {
+    });
+
+    it.skip('reverts if the user bet doesnt match the reported result', async () => {
+    });
+
   });
 });
 

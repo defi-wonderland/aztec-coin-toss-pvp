@@ -82,6 +82,9 @@ export class CoinTossContract extends ContractBase {
     /** _increase_bettors(round_id: field) */
     _increase_bettors: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** _increase_reveals(round_id: field, user_bet: field) */
+    _increase_reveals: ((round_id: FieldLike, user_bet: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** _set_result(caller: field, round_id: field, answer: field) */
     _set_result: ((caller: FieldLike, round_id: FieldLike, answer: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -112,6 +115,9 @@ export class CoinTossContract extends ContractBase {
     /** get_result(round_id: field) */
     get_result: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** get_reveal_notes_unconstrained(start_offset: integer) */
+    get_reveal_notes_unconstrained: ((start_offset: (bigint | number)) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** get_round_data(round_id: field) */
     get_round_data: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -132,6 +138,9 @@ export class CoinTossContract extends ContractBase {
 
     /** oracle_callback(answer: field, data: array) */
     oracle_callback: ((answer: FieldLike, data: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** reveal(round_id: field, user_randomness: field) */
+    reveal: ((round_id: FieldLike, user_randomness: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** roll(round_id: field, oracle_nonce: field) */
     roll: ((round_id: FieldLike, oracle_nonce: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;

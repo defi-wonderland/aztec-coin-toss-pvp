@@ -10,6 +10,7 @@ contract CoinToss {
     //                             Imports                             //
     /////////////////////////////////////////////////////////////////////
 
+
     use crate::types::oracle::{
         DivinityAddressSubmitQuestionStruct, 
         FromSubmitQuestionStruct, 
@@ -18,6 +19,7 @@ contract CoinToss {
 
     use crate::types::{
         bet_note::{BetNote, BetNoteMethods, BET_NOTE_LEN},
+        reveal_note::{RevealNote, RevealNoteMethods, REVEAL_NOTE_LEN},
         config_note::{ConfigNote, ConfigNoteMethods, CONFIG_NOTE_LEN},
         round_data::{RoundData, RoundDataSerializationMethods, ROUND_DATA_SERIALIZED_LEN, Phase},
         token::{
@@ -77,6 +79,7 @@ contract CoinToss {
     global ROUND_DATA_SLOT = 8;
     global CONFIG_NOTE_SLOT = 9;
     global BETS_SLOT = 10;
+    global REVEALS_SLOT = 11;
 
     /// @member config The config note, containing the divinity address, the private oracle address, the token address and the bet amount
     /// @member bets The set of bet notes (ie active bets)
@@ -94,6 +97,7 @@ contract CoinToss {
         ///////////////////////////// private //////////////////////////
         config: ImmutableSingleton<ConfigNote, CONFIG_NOTE_LEN>,
         bets: Set<BetNote, BET_NOTE_LEN>,
+        reveals: Set<RevealNote, REVEAL_NOTE_LEN>,
     }
 
     impl Storage {
@@ -136,6 +140,7 @@ contract CoinToss {
                     ConfigNoteMethods,
                 ),
                 bets: Set::new(context, BETS_SLOT, BetNoteMethods),
+                reveals: Set::new(context, REVEALS_SLOT, RevealNoteMethods),
             }
         }
     }
@@ -251,7 +256,7 @@ contract CoinToss {
         round_id: Field,
     ) {
         let current_round_id = storage.round_id.read();
-        assert(current_round_id == round_id, "Round id does not match current round id");
+        assert(current_round_id == round_id, "Round id mismatch");
 
         let current_round_data = storage.rounds.at(current_round_id).read();
         assert(current_round_data.phase >= Phase::BETTING, "Betting phase over");
@@ -269,7 +274,7 @@ contract CoinToss {
         assert(caller == oracle.address, "Caller is not the oracle");
 
         let current_round_id = storage.round_id.read();
-        assert(current_round_id == round_id, "Round id does not match current round id");
+        assert(current_round_id == round_id, "Round id mismatch");
 
         let current_round_data = storage.rounds.at(current_round_id).read();
         assert(current_round_data.phase == Phase::AWAITING_ANSWER, "Not in awaiting answer phase");
@@ -278,6 +283,21 @@ contract CoinToss {
         storage.rounds.at(round_id).write(new_round_data);
 
         storage.results.at(round_id).write(answer as bool);
+    }
+
+    #[aztec(public)]
+    internal fn _increase_reveals(round_id: Field, user_bet: Field) {
+        let current_round_id = storage.round_id.read();
+        assert(current_round_id == round_id, "Round id mismatch");
+
+        let current_round_data = storage.rounds.at(current_round_id).read();
+        assert(current_round_data.phase == Phase::REVEAL, "Reveal phase over");
+
+        let results = storage.results.at(round_id).read();
+        assert(results == user_bet as bool, "User bet does not match result");
+
+        let updated_round_data = current_round_data.increase_reveal_count();
+        storage.rounds.at(round_id).write(updated_round_data);
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -325,6 +345,29 @@ contract CoinToss {
         context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, answer]);
     }
 
+    #[aztec(private)]
+    fn reveal(round_id: Field, user_randomness: Field) {
+        let options = NoteGetterOptions::new().select(1, round_id).select(3, user_randomness).set_limit(1);
+        let bet_notes = storage.bets.get_notes(options);
+        let bettor = AztecAddress::new(context.msg_sender());
+
+        if (bet_notes[0].is_some()) {
+            let bet_note = bet_notes[0].unwrap_unchecked();
+            let user_bet = bet_note.bet;
+            
+            let mut reveal_note: RevealNote = RevealNote::new(bettor, round_id, user_randomness);
+            storage.reveals.insert(&mut reveal_note, true);
+
+            storage.bets.remove(bet_note);
+            
+            let selector = compute_selector("_increase_reveals(Field,Field)");
+            context.call_public_function(context.this_address(), selector, [round_id, user_bet as Field]);
+        } else {
+            assert(false, "Bet note not found");
+        }
+
+    }
+
     /////////////////////////////////////////////////////////////////////
     //             Public unconstrained external functions             //
     /////////////////////////////////////////////////////////////////////
@@ -345,6 +388,15 @@ contract CoinToss {
         storage.bets.view_notes(user_bets_getter_option)
     }
 
+    /// @notice         Gets the reveal notes for an user
+    /// @custom:privacy unconstrained
+    /// @param          start_offset The offset to start from
+    /// @return         The reveal notes (padded with empty notes, up to 10)
+    unconstrained fn get_reveal_notes_unconstrained(start_offset: u32) -> [Option<RevealNote>; 10] {
+        let reveal_notes_getter_option = NoteViewerOptions::new().set_offset(start_offset);
+        storage.reveals.view_notes(reveal_notes_getter_option)
+    }
+
     /// @notice         Compute the note hash and nullifier for a note
     /// @custom:privacy unconstrained
     /// @param          contract_address The contract address (this)
@@ -354,7 +406,14 @@ contract CoinToss {
     /// @return         The note hash and nullifier
     unconstrained fn compute_note_hash_and_nullifier(contract_address: Field, nonce: Field, storage_slot: Field, preimage: [Field; CONFIG_NOTE_LEN]) -> [Field; 4] {
         let note_header = NoteHeader::new(contract_address, nonce, storage_slot);
-        note_utils::compute_note_hash_and_nullifier(ConfigNoteMethods, note_header, preimage)
+
+        if(storage_slot == BETS_SLOT) {
+            note_utils::compute_note_hash_and_nullifier(BetNoteMethods, note_header, preimage)
+        } else if(storage_slot == REVEALS_SLOT) {
+            note_utils::compute_note_hash_and_nullifier(RevealNoteMethods, note_header, preimage)
+        } else {
+            note_utils::compute_note_hash_and_nullifier(ConfigNoteMethods, note_header, preimage)
+        }
     }
 
     unconstrained fn get_phase_length_unconstrained() -> Field {

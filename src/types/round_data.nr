@@ -37,6 +37,15 @@ impl RoundData {
             bettors: round_data.bettors + 1,
         }
     }
+
+    pub fn increase_reveal_count(round_data: RoundData) -> Self {
+        Self {
+            phase: round_data.phase,
+            current_phase_end: round_data.current_phase_end,
+            reveals_count: round_data.reveals_count + 1,
+            bettors: round_data.bettors,
+        }
+    }
 }
 
 global ROUND_DATA_SERIALIZED_LEN: Field = 4;
