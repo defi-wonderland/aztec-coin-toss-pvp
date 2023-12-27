@@ -203,9 +203,6 @@ contract CoinToss {
         let address_this = AztecAddress::new(context.this_address());
         let token = TokenPrivateContextInterface::at(token.address);
 
-        let selector = compute_selector("_bet_round_id_checks(Field)");
-        context.call_public_function(context.this_address(), selector, [round_id]);
-
         // Unshield private balance from the user to the coin toss. This requires an authwit.
         let _ = token.unshield(
             &mut context,
@@ -219,9 +216,11 @@ contract CoinToss {
         let mut user_bet: BetNote = BetNote::new(&mut context, bettor, round_id, bet, bet_randomness);
         storage.bets.insert(&mut user_bet, true);
 
-        let selector = compute_selector("_increase_bettors(Field)");
+        let selector = compute_selector("_bet_round_id_checks(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
 
+        let selector = compute_selector("_increase_bettors(Field)");
+        context.call_public_function(context.this_address(), selector, [round_id]);
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -243,7 +242,8 @@ contract CoinToss {
         round_id: Field,
     ) {
         let current_round_data = storage.rounds.at(round_id).read();
-        storage.rounds.at(round_id).write(RoundData::new(current_round_data.phase, current_round_data.current_phase_end, current_round_data.reveals_count, current_round_data.bettors + 1));
+        let updated_round_data = current_round_data.add_bettor();
+        storage.rounds.at(round_id).write(updated_round_data);
     }
 
     /////////////////////////////////////////////////////////////////////
