@@ -260,6 +260,30 @@ contract CoinToss {
         storage.rounds.at(round_id).write(updated_round_data);
     }
 
+    #[aztec(public)]
+    internal fn _set_result(caller: Field, round_id: Field, answer: Field) {
+        let oracle = storage.oracle_address.read();
+        let timestamp = context.timestamp() as u120;
+        let phase_length = storage.phase_length.read() as u120;
+
+        assert(caller == oracle.address, "Caller is not the oracle");
+
+        let current_round_id = storage.round_id.read();
+        assert(current_round_id == round_id, "Round id does not match current round id");
+
+        let current_round_data = storage.rounds.at(current_round_id).read();
+        assert(current_round_data.phase == Phase::AWAITING_ANSWER, "Not in awaiting answer phase");
+
+        let new_round_data = RoundData::new(Phase::REVEAL, (timestamp + phase_length) as u120, 0, current_round_data.bettors);
+        storage.rounds.at(round_id).write(new_round_data);
+
+        storage.results.at(round_id).write(answer as bool);
+    }
+
+    /////////////////////////////////////////////////////////////////////
+    //                   Private internal functions                    //
+    /////////////////////////////////////////////////////////////////////
+
     /// @notice         Calls the oracle to get the result of the bet round
     /// @custom:privacy private
     /// @param          round_id The id of the current round
@@ -289,9 +313,17 @@ contract CoinToss {
         context.call_public_function(context.this_address(), selector, [round_id]);
     }
 
-    /////////////////////////////////////////////////////////////////////
-    //                   Private internal functions                    //
-    /////////////////////////////////////////////////////////////////////
+    /// @notice         Called by the oracle to set the result of the bet round
+    /// @param          answer The answer of the oracle
+    /// @param          data The data of the oracle 
+    ///                 data[0]: round_id
+    ///                 data[1:5]: unused
+    #[aztec(private)]
+    fn oracle_callback(answer: Field, data: [Field; 5]) {
+        let round_id = data[0];
+        let selector = compute_selector("_set_result(Field,Field,Field)");
+        context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, answer]);
+    }
 
     /////////////////////////////////////////////////////////////////////
     //             Public unconstrained external functions             //
@@ -351,6 +383,10 @@ contract CoinToss {
 
     unconstrained fn get_round_data(round_id: Field) -> RoundData {
         storage.rounds.at(round_id).read()
+    }
+
+    unconstrained fn get_result(round_id: Field) -> bool {
+        storage.results.at(round_id).read()
     }
 
     /// @notice         Gets a bet note by its round id and randomness combination and checks whether these params were nullified

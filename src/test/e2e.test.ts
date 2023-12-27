@@ -70,6 +70,7 @@ beforeAll(async () => {
 describe("E2E Coin Toss", () => {
 
   let roundId = 0n;
+  let firstBet: BetNote;
 
   // Setup: Deploy the contracts and mint tokens, ready for escrow
   beforeAll(async () => {
@@ -166,8 +167,6 @@ describe("E2E Coin Toss", () => {
   });
 
   describe('bet', () => {
-    let firstBet: BetNote;
-
     it("reverts if the round id is not the current one", async () => {
       firstBet = createUserBetNotes(1)[0];
       const unshieldNonce = Fr.random();
@@ -278,6 +277,40 @@ describe("E2E Coin Toss", () => {
       const currentRound = await coinToss.methods.get_round_data(roundId).view();
       expect(currentRound.phase).toBe(2n);
       expect(Number(currentRound.current_phase_end)).toBe(betPhaseEnd + 1 + PHASE_LENGTH);
+    });
+  });
+
+  describe('oracle_callback', () => {
+    let currentTime: number;
+    let answer: number;
+
+    it('tx gets mined', async () => {
+      answer = Number(firstBet.bet);
+
+      currentTime = await cc.eth.timestamp() + 1;
+      await cc.aztec.warp(currentTime);
+
+      const receipt = await oracle.withWallet(divinity).methods.submit_answer(roundId, user.getAddress(), answer).send().wait();
+      expect(receipt.status).toBe(TxStatus.MINED);
+    });
+
+    it('updates the round data', async () => {
+      const currentRound = await coinToss.methods.get_round_data(roundId).view();
+      expect(currentRound.phase).toBe(3n);
+      expect(currentRound.bettors).toBe(1n);
+      expect(Number(currentRound.current_phase_end)).toBe(currentTime + PHASE_LENGTH);
+    });
+
+    it('updates the answer', async () => {
+      const currentAnswer = await coinToss.methods.get_result(roundId).view();
+      expect(Number(currentAnswer)).toBe(answer);
+    });
+
+    it('reverts when called by someone else', async () => {
+      const callbackTx = coinToss.withWallet(user).methods.oracle_callback(0n, [0n,0n,0n,0n,0n]).simulate();
+      await expect(callbackTx)
+        .rejects
+        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Caller is not the oracle 'caller == oracle.address'");
     });
   });
 });
