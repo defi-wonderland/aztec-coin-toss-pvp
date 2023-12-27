@@ -216,9 +216,6 @@ contract CoinToss {
         let mut user_bet: BetNote = BetNote::new(&mut context, bettor, round_id, bet, bet_randomness);
         storage.bets.insert(&mut user_bet, true);
 
-        let selector = compute_selector("_bet_round_id_checks(Field)");
-        context.call_public_function(context.this_address(), selector, [round_id]);
-
         let selector = compute_selector("_increase_bettors(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
     }
@@ -227,7 +224,7 @@ contract CoinToss {
     //                   Public internal functions                    //
     /////////////////////////////////////////////////////////////////////
     #[aztec(public)]
-    internal fn _bet_round_id_checks(
+    internal fn _increase_bettors(
         round_id: Field,
     ) {
         let current_round_id = storage.round_id.read();
@@ -235,13 +232,7 @@ contract CoinToss {
 
         let current_round_data = storage.rounds.at(current_round_id).read();
         assert(current_round_data.phase >= Phase::BETTING, "Betting phase over");
-    }
 
-    #[aztec(public)]
-    internal fn _increase_bettors(
-        round_id: Field,
-    ) {
-        let current_round_data = storage.rounds.at(round_id).read();
         let updated_round_data = current_round_data.add_bettor();
         storage.rounds.at(round_id).write(updated_round_data);
     }
@@ -320,3 +311,15 @@ contract CoinToss {
         BetNote::is_round_randomness_nullified(round_id, randomness)
     }
 }
+
+/*
+    fn reveal(result: bool, user_randomness: Field, round_id: Field) {
+        let options = NoteGetterOptions::new().select(1, round_id).select(3, user_randomness).set_limit(1);
+        let bet_notes = storage.bets.get_notes(user_bets_getter_option)
+
+        if (bet_notes[0].is_some()) {
+            let bet_note = bet_notes[0].unwrap_unchecked();
+
+        }
+    }
+*/

@@ -79,9 +79,6 @@ export class CoinTossContract extends ContractBase {
   /** Type-safe wrappers for the public methods exposed by the contract. */
   public methods!: {
     
-    /** _bet_round_id_checks(round_id: field) */
-    _bet_round_id_checks: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
     /** _increase_bettors(round_id: field) */
     _increase_bettors: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
