@@ -28,7 +28,9 @@ contract CoinToss {
             OwnerSettleEscrowStruct,
             RecipientSettleEscrowStruct,
             TokenPrivateContextInterface, 
-            ToTransferStruct
+            ToTransferStruct,
+            FromUnshieldStruct,
+            ToUnshieldStruct,
         }
     };
 
@@ -192,6 +194,57 @@ contract CoinToss {
     /////////////////////////////////////////////////////////////////////
     //                   Private external functions                    //
     /////////////////////////////////////////////////////////////////////
+    #[aztec(private)]
+    fn bet(bet: bool, round_id: Field, bet_randomness: Field, unshield_nonce: Field) {
+        let config_note = storage.config.get_note();
+        let token = config_note.token;
+        let bet_amount = config_note.bet_amount;
+        let bettor = AztecAddress::new(context.msg_sender());
+        let address_this = AztecAddress::new(context.this_address());
+        let token = TokenPrivateContextInterface::at(token.address);
+
+        let selector = compute_selector("_bet_round_id_checks(Field)");
+        context.call_public_function(context.this_address(), selector, [round_id]);
+
+        // Unshield private balance from the user to the coin toss. This requires an authwit.
+        let _ = token.unshield(
+            &mut context,
+            FromUnshieldStruct { address: bettor.address }, 
+            ToUnshieldStruct {address: address_this.address }, 
+            bet_amount, 
+            unshield_nonce
+        );
+
+        // Create a bet note for the user. This method nullifies the randomness and round_id combinarion.
+        let mut user_bet: BetNote = BetNote::new(&mut context, bettor, round_id, bet, bet_randomness);
+        storage.bets.insert(&mut user_bet, true);
+
+        let selector = compute_selector("_increase_bettors(Field)");
+        context.call_public_function(context.this_address(), selector, [round_id]);
+
+    }
+
+    /////////////////////////////////////////////////////////////////////
+    //                   Public internal functions                    //
+    /////////////////////////////////////////////////////////////////////
+    #[aztec(public)]
+    internal fn _bet_round_id_checks(
+        round_id: Field,
+    ) {
+        let current_round_id = storage.round_id.read();
+        assert(current_round_id == round_id, "Round id does not match current round id");
+
+        let current_round_data = storage.rounds.at(current_round_id).read();
+        assert(current_round_data.phase >= Phase::BETTING, "Betting phase over");
+    }
+
+    #[aztec(public)]
+    internal fn _increase_bettors(
+        round_id: Field,
+    ) {
+        let current_round_data = storage.rounds.at(round_id).read();
+        storage.rounds.at(round_id).write(RoundData::new(current_round_data.phase, current_round_data.current_phase_end, current_round_data.reveals_count, current_round_data.bettors + 1));
+    }
 
     /////////////////////////////////////////////////////////////////////
     //                   Private internal functions                    //
@@ -255,5 +308,15 @@ contract CoinToss {
 
     unconstrained fn get_round_data(round_id: Field) -> RoundData {
         storage.rounds.at(round_id).read()
+    }
+
+    /// @notice         Gets a bet note by its round id and randomness combination and checks whether these params were nullified
+    /// @custom:privacy unconstrained
+    /// @param          round_id The id of the round this bet was made in
+    /// @param          randomness The randomness the user used for this bet in this round
+    /// @param          bet_id The id of the bet
+    /// @return         A boolean indicating whether a bet with this combination of fields has been initialized or not
+    unconstrained fn is_round_randomness_nullified(round_id: Field, randomness: Field) -> bool {
+        BetNote::is_round_randomness_nullified(round_id, randomness)
     }
 }

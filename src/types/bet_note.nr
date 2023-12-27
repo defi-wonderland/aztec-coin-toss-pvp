@@ -33,14 +33,14 @@ use dep::std::option::Option;
 
 /// @notice A note that represents a given bet, of a given user
 /// @member owner The owner of the note
-/// @member bet_id The id of the bet (the escrow randomness is reused for this)
+/// @member round_id The id of the round this bet is placed on
 /// @member bet The bet outcome given by the user (true or false)
 /// @member header The note header
 struct BetNote {
     owner: AztecAddress,
-    bet_id: Field,
+    round_id: Field,
     bet: bool, // Heads is 0 (False). Tails is 1 (True).
-    escrow_randomness: Field,
+    randomness: Field,
     header: NoteHeader
 }
 
@@ -52,36 +52,40 @@ impl BetNote {
     /////////////////////////////////////////////////////////////////////
 
     /// @notice Bet note constructor
-    /// @param _context The currenct context, used to push the bet_id nullifier in order to ensure uniqueness
+    /// @param _context The currenct context, used to push the round_id nullifier in order to ensure uniqueness
     /// @param _owner The owner of the note
-    /// @param _bet_id The id of the bet (randomly generated, by reusing the escrow randomness)
     /// @param _bet The bet outcome given by the user (true or false, representing head or tail)
-    pub fn new(_context: &mut PrivateContext, _owner: AztecAddress, _bet: bool, _bet_id: Field, _escrow_randomness: Field) -> Self {
-        // Nullify bet id
-        let compute_initialization_nullifier = BetNote::generate_bet_id_nullifier;
-        let nullifier = compute_initialization_nullifier(_bet_id);
+    /// @param _round_id The id of the bet (randomly generated, by reusing the escrow randomness)
+    /// @param _randomness An extra randomness field, often generated during the function execution and not known beforehand.
+    ///                    Used for linking to other notes, identifaction and nullification.
+    pub fn new(_context: &mut PrivateContext, _owner: AztecAddress, _round_id: Field, _bet: bool, _randomness: Field) -> Self {
+        // Nullify round id and randomness combination
+        let compute_initialization_nullifier = BetNote::generate_round_randomness_nullifier;
+        let nullifier = compute_initialization_nullifier(_round_id, _randomness);
         _context.push_new_nullifier(nullifier, EMPTY_NULLIFIED_COMMITMENT);
 
         BetNote {
             owner: _owner,
-            bet_id: _bet_id,
+            round_id: _round_id,
             bet: _bet,
-            escrow_randomness: _escrow_randomness,
+            randomness: _randomness,
             header: NoteHeader::empty(),
         }
     }
 
-    /// @notice Bet note bet_id nullifying generator
-    /// @param _bet_id The id of the bet to nullify
-    pub fn generate_bet_id_nullifier(_bet_id: Field) -> Field {
-        dep::std::hash::pedersen_hash([_bet_id])
+    /// @notice Bet note round_id nullifying generator
+    /// @param _round_id The id of the bet to nullify
+    /// @param _randomness User defined randomness for a given bet
+    pub fn generate_round_randomness_nullifier(_round_id: Field, _randomness: Field) -> Field {
+        dep::std::hash::pedersen_hash([_round_id, _randomness])
     }
 
-    /// @notice Bet note bet_id initialization checker. Checks whether the bet_id was added to the nullifying tree
-    /// @param _bet_id The id of the bet to check for nullification status
-    unconstrained pub fn is_id_nullified(_bet_id: Field) -> bool {
-        let compute_initialization_nullifier = BetNote::generate_bet_id_nullifier;
-        let nullifier = compute_initialization_nullifier(_bet_id);
+    /// @notice Bet note round_id initialization checker. Checks whether the round_id and randomness combination was added to the nullifying tree
+    /// @param _round_id The round id of the bet to check for nullification status
+    /// @param _randomness The randomness of the bet to check for nullification status
+    unconstrained pub fn is_round_randomness_nullified(_round_id: Field, _randomness: Field) -> bool {
+        let compute_initialization_nullifier = BetNote::generate_round_randomness_nullifier;
+        let nullifier = compute_initialization_nullifier(_round_id, _randomness);
         check_nullifier_exists(nullifier)
     }
 
@@ -91,16 +95,16 @@ impl BetNote {
 
     /// @notice Serializes the note
     fn serialize(self) -> [Field; BET_NOTE_LEN] {
-        [self.owner.address, self.bet_id, self.bet as Field, self.escrow_randomness]
+        [self.owner.address, self.round_id, self.bet as Field, self.randomness]
     }
 
     /// @notice Deserializes the note
     fn deserialize(preimage: [Field; BET_NOTE_LEN]) -> Self {
         BetNote {
             owner: AztecAddress::new(preimage[0]),
-            bet_id: preimage[1],
+            round_id: preimage[1],
             bet: preimage[2] as bool,
-            escrow_randomness: preimage[3],
+            randomness: preimage[3],
             header: NoteHeader::empty(),
         }
     }
@@ -109,17 +113,17 @@ impl BetNote {
     fn compute_note_hash(self) -> Field {
         dep::std::hash::pedersen_hash([
             self.owner.address,
-            self.bet_id,
+            self.round_id,
             self.bet as Field,
-            self.escrow_randomness
+            self.randomness
         ])
     }
 
     /// @notice Computes the nullifier of the note
-    /// @dev    This is a pretty standard nullifier computation, using the bet_id as the key
+    /// @dev    This is a pretty standard nullifier computation, using the round_id as the key
     fn compute_nullifier(self) -> Field {
         let note_hash_for_nullify = compute_note_hash_for_read_or_nullify(BetNoteMethods, self);
-        let nullifier_key = self.bet_id;
+        let nullifier_key = self.round_id;
 
         dep::std::hash::pedersen_hash([
             note_hash_for_nullify,

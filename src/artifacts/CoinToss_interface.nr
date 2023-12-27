@@ -29,6 +29,24 @@ impl CoinTossPrivateContextInterface {
       }
   }
   
+  pub fn bet(
+    self,
+    context: &mut PrivateContext,
+    bet: bool,
+    round_id: Field,
+    bet_randomness: Field,
+    unshield_nonce: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 4];
+    serialized_args[0] = bet as Field;
+    serialized_args[1] = round_id;
+    serialized_args[2] = bet_randomness;
+    serialized_args[3] = unshield_nonce;
+
+    context.call_private_function(self.address, 0x5aeafc41, serialized_args)
+  }
+  
+
   pub fn initialize(
     self,
     context: &mut PrivateContext,

@@ -79,6 +79,15 @@ export class CoinTossContract extends ContractBase {
   /** Type-safe wrappers for the public methods exposed by the contract. */
   public methods!: {
     
+    /** _bet_round_id_checks(round_id: field) */
+    _bet_round_id_checks: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** _increase_bettors(round_id: field) */
+    _increase_bettors: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** bet(bet: boolean, round_id: field, bet_randomness: field, unshield_nonce: field) */
+    bet: ((bet: boolean, round_id: FieldLike, bet_randomness: FieldLike, unshield_nonce: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** compute_note_hash_and_nullifier(contract_address: field, nonce: field, storage_slot: field, preimage: array) */
     compute_note_hash_and_nullifier: ((contract_address: FieldLike, nonce: FieldLike, storage_slot: FieldLike, preimage: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -111,6 +120,9 @@ export class CoinTossContract extends ContractBase {
 
     /** initialize(phase_length: field, bet_amount: field, oracle_address: struct, divinity_address: struct, token_address: struct) */
     initialize: ((phase_length: FieldLike, bet_amount: FieldLike, oracle_address: AztecAddressLike, divinity_address: AztecAddressLike, token_address: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** is_round_randomness_nullified(round_id: field, randomness: field) */
+    is_round_randomness_nullified: ((round_id: FieldLike, randomness: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** start_next_round() */
     start_next_round: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
