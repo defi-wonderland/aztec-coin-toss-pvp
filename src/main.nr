@@ -311,15 +311,3 @@ contract CoinToss {
         BetNote::is_round_randomness_nullified(round_id, randomness)
     }
 }
-
-/*
-    fn reveal(result: bool, user_randomness: Field, round_id: Field) {
-        let options = NoteGetterOptions::new().select(1, round_id).select(3, user_randomness).set_limit(1);
-        let bet_notes = storage.bets.get_notes(user_bets_getter_option)
-
-        if (bet_notes[0].is_some()) {
-            let bet_note = bet_notes[0].unwrap_unchecked();
-
-        }
-    }
-*/
