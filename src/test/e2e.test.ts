@@ -157,6 +157,82 @@ describe("E2E Coin Toss", () => {
         .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Current round not finished 'current_round_data.phase >= Phase::REVEAL'");
     });
   });
+
+  describe('bet', () => {
+    let firstBet: BetNote;
+
+    it("reverts if the round id is not the current one", async () => {
+      firstBet = createUserBetNotes(1)[0];
+      const unshieldNonce = Fr.random();
+      const roundId = await coinToss.withWallet(user).methods.get_round_id().view();
+      const wrongRoundId = roundId + 1n
+
+      const unshieldAction = await token.withWallet(user).methods.unshield(user.getAddress(), coinToss.address, BET_AMOUNT, unshieldNonce);
+      await createAuth(unshieldAction, user, coinToss.address);
+
+      // Simulate the transaction
+      const betTx = coinToss.withWallet(user).methods.bet(firstBet.bet, wrongRoundId, firstBet.randomness, unshieldNonce).simulate();
+      await expect(betTx).rejects.toThrow("(JSON-RPC PROPAGATED) Assertion failed: Round id does not match current round id 'current_round_id == round_id'");    
+    })
+
+    it.skip("reverts if the betting phase is over", async () => {
+      // TODO: Test after functions that advance phases are introduced
+    })
+
+    it("mines the transaction", async () => {
+      const unshieldNonce = Fr.random();
+
+      // Create authwit so that cointoss can call unshield as the recipient
+      const unshieldAction = await token.withWallet(user).methods.unshield(user.getAddress(), coinToss.address, BET_AMOUNT, unshieldNonce);
+      await createAuth(unshieldAction, user, coinToss.address);
+      
+      // Send the transaction
+      const receipt = await coinToss.withWallet(user).methods.bet(firstBet.bet, firstBet.round_id, firstBet.randomness, unshieldNonce).send().wait()
+      expect(receipt.status).toBe("mined");
+    })
+
+    it("nullifies randomness", async () => {
+      const result = await coinToss.withWallet(user).methods.is_round_randomness_nullified(firstBet.round_id, firstBet.randomness).view({from: user.getAddress()});
+      expect(result).toBe(true);
+    })
+
+    it("increases public balance of coin toss by bet amount", async () => {
+      const coinTossBalance = await token.methods.balance_of_public(coinToss.address).view();
+      // Because this is the first bet, the cointoss public balance previous to the bet is assumed to be 0.
+      expect(coinTossBalance).toBe(BET_AMOUNT);
+    })
+
+    it("reduces private balance of the user by bet amount", async () => {
+      const userPrivateBalance = await token.methods.balance_of_private(user.getAddress()).view();
+      expect(userPrivateBalance).toBe(MINT_TOKENS - BET_AMOUNT);
+    })
+
+    it("increases the amount of bettors", async () => {
+      const roundData = await coinToss.withWallet(user).methods.get_round_data(firstBet.round_id).view();
+      expect(roundData.bettors).toBe(1n);
+    })
+
+    it("creates a bet note for the user with the correct parameters", async () => {
+      const bet: BetNote = new BetNote(
+        (
+          await coinToss
+            .withWallet(user)
+            .methods.get_user_bets_unconstrained(0n)
+            .view({ from: user.getAddress() })
+        )[0]._value
+      );
+
+      // Check: Compare the note's data with the expected values
+      const betNote: BetNote = {
+        owner: firstBet.owner,
+        round_id: firstBet.round_id,
+        bet: firstBet.bet,
+        randomness: firstBet.randomness
+      };
+
+      expect(bet).toEqual(expect.objectContaining(betNote));
+    })
+  });
 });
 
 // Create an array of mock bet notes
@@ -167,8 +243,9 @@ function createUserBetNotes(number: number = 3): BetNote[] {
   for (let i = 0; i < number; i++) {
     betNote = new BetNote({
       owner: user.getAddress(),
-      bet_id: Fr.random().toBigInt(),
+      round_id: 1n,
       bet: !!(i % 2), // 0: Heads, 1: Tails
+      randomness: Fr.random().toBigInt(),
     });
 
     betNotes.push(betNote);
