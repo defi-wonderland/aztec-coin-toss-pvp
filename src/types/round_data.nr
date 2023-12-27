@@ -28,6 +28,15 @@ impl RoundData {
             bettors: _bettors
         }
     }
+
+    pub fn add_bettor(round_data: RoundData) -> Self {
+        Self {
+            phase: round_data.phase,
+            current_phase_end: round_data.current_phase_end,
+            reveals_count: round_data.reveals_count,
+            bettors: round_data.bettors + 1,
+        }
+    }
 }
 
 global ROUND_DATA_SERIALIZED_LEN: Field = 4;
