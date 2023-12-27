@@ -88,6 +88,9 @@ export class CoinTossContract extends ContractBase {
     /** compute_note_hash_and_nullifier(contract_address: field, nonce: field, storage_slot: field, preimage: array) */
     compute_note_hash_and_nullifier: ((contract_address: FieldLike, nonce: FieldLike, storage_slot: FieldLike, preimage: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** end_bet_phase(round_id: field) */
+    end_bet_phase: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** get_bet_amount_unconstrained() */
     get_bet_amount_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -120,6 +123,9 @@ export class CoinTossContract extends ContractBase {
 
     /** is_round_randomness_nullified(round_id: field, randomness: field) */
     is_round_randomness_nullified: ((round_id: FieldLike, randomness: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** roll(round_id: field, oracle_nonce: field) */
+    roll: ((round_id: FieldLike, oracle_nonce: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** start_next_round() */
     start_next_round: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;

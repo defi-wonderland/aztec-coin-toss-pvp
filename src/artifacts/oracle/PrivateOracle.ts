@@ -97,17 +97,14 @@ export class PrivateOracleContract extends ContractBase {
     /** get_fee() */
     get_fee: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** get_fee_unconstrained() */
+    get_fee_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** get_payment_token() */
     get_payment_token: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** get_pending_questions_unconstrained(divinity: struct, start_offset: integer) */
     get_pending_questions_unconstrained: ((divinity: AztecAddressLike, start_offset: (bigint | number)) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
-    /** get_private_fee() */
-    get_private_fee: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
-    /** get_private_payment_token() */
-    get_private_payment_token: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** get_questions_unconstrained(requester: struct, start_offset: integer) */
     get_questions_unconstrained: ((requester: AztecAddressLike, start_offset: (bigint | number)) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
