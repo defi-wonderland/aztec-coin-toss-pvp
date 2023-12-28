@@ -185,13 +185,13 @@ contract CoinToss {
     }
 
     #[aztec(public)]
-    fn end_reveal_phase(number_of_winners: u120, number_of_bettors: u120) {
+    fn end_reveal_phase() {
         let current_round_id = storage.round_id.read(); 
         let current_round_data = storage.rounds.at(current_round_id).read();
+        let number_of_bettors = current_round_data.bettors;
+        let number_of_winners = current_round_data.reveals_count;
 
         assert(current_round_data.phase == Phase::REVEAL, "Reveal phase over");
-        assert(current_round_data.bettors == number_of_bettors, "Number of bettors mismatch");
-        assert(current_round_data.reveals_count == number_of_winners, "Number of reveals mismatch");
         
         let bet_amount = storage.bet_amount.read() as u120;
         let claim_amount = number_of_bettors * bet_amount / number_of_winners;

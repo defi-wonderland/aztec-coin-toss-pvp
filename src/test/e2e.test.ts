@@ -385,26 +385,10 @@ describe("E2E Coin Toss", () => {
     it.skip('reverts if the phase is not reveal', async () => {
     })  
 
-    it('reverts if the number of bettors doesnt coincide with the stored amount', async () => {
-      const wrongNumberOfBettors = realNumberOfBettors + 1n;
-      const endRevealPhaseTx = coinToss.withWallet(user).methods.end_reveal_phase(realNumberOfWinners, wrongNumberOfBettors).simulate();
-      await expect(endRevealPhaseTx)
-      .rejects
-      .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Number of bettors mismatch 'current_round_data.bettors == number_of_bettors'");  
-    })
-
-    it('reverts if the number of reveals doesnt coincide with the stored amount', async () => {
-      const wrongNumberOfWinners = realNumberOfWinners + 1n;
-      const endRevealPhaseTx = coinToss.withWallet(user).methods.end_reveal_phase(wrongNumberOfWinners, realNumberOfBettors).simulate();
-      await expect(endRevealPhaseTx)
-      .rejects
-      .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Number of reveals mismatch 'current_round_data.reveals_count == number_of_winners'");
-    })
-
     it('tx gets mined', async () => {
       currentTime = await cc.eth.timestamp() + 1;
       await cc.aztec.warp(currentTime);
-      const receipt = await coinToss.withWallet(user).methods.end_reveal_phase(realNumberOfWinners, realNumberOfBettors).send().wait();
+      const receipt = await coinToss.withWallet(user).methods.end_reveal_phase().send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
     });
     

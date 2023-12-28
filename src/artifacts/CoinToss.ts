@@ -97,8 +97,8 @@ export class CoinTossContract extends ContractBase {
     /** end_bet_phase(round_id: field) */
     end_bet_phase: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** end_reveal_phase(number_of_winners: integer, number_of_bettors: integer) */
-    end_reveal_phase: ((number_of_winners: (bigint | number), number_of_bettors: (bigint | number)) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+    /** end_reveal_phase() */
+    end_reveal_phase: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** get_bet_amount_unconstrained() */
     get_bet_amount_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
