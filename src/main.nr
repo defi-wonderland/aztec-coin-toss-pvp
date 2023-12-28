@@ -181,7 +181,28 @@ contract CoinToss {
         }
         let next_round_id = current_round_id + 1;
         storage.round_id.write(next_round_id);
-        storage.rounds.at(next_round_id).write(RoundData::new(Phase::BETTING, (timestamp + phase_length) as u120, 0, 0));
+        storage.rounds.at(next_round_id).write(RoundData::new(Phase::BETTING, (timestamp + phase_length) as u120, 0, 0, 0));
+    }
+
+    #[aztec(public)]
+    fn end_reveal_phase() {
+        let current_round_id = storage.round_id.read(); 
+        let current_round_data = storage.rounds.at(current_round_id).read();
+        let number_of_bettors = current_round_data.bettors;
+        let number_of_winners = current_round_data.reveals_count;
+        let timestamp = context.timestamp() as u120;
+
+        assert(current_round_data.phase == Phase::REVEAL, "Reveal phase over");
+        assert(timestamp >= current_round_data.current_phase_end, "Reveal phase not finished");
+        
+        let bet_amount = storage.bet_amount.read() as u120;
+        let claim_amount = number_of_bettors * bet_amount / number_of_winners;
+
+        let timestamp = context.timestamp() as u120;
+        let phase_length = storage.phase_length.read() as u120;
+
+        let updated_round_data = RoundData::new(Phase::CLAIM, (timestamp + phase_length) as u120, number_of_winners, number_of_bettors, claim_amount);
+        storage.rounds.at(current_round_id).write(updated_round_data);
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -215,7 +236,7 @@ contract CoinToss {
         assert(timestamp >= current_round_data.current_phase_end, "Bet phase not finished");
 
         // Set state to AWAITING_ANSWER and update the end phase timestamp
-        let new_round_data = RoundData::new(Phase::AWAITING_ANSWER, (timestamp + phase_length) as u120, 0, current_round_data.bettors);
+        let new_round_data = RoundData::new(Phase::AWAITING_ANSWER, (timestamp + phase_length) as u120, 0, current_round_data.bettors, 0);
         storage.rounds.at(current_round_id).write(new_round_data);
     }
 
@@ -279,7 +300,7 @@ contract CoinToss {
         let current_round_data = storage.rounds.at(current_round_id).read();
         assert(current_round_data.phase == Phase::AWAITING_ANSWER, "Not in awaiting answer phase");
 
-        let new_round_data = RoundData::new(Phase::REVEAL, (timestamp + phase_length) as u120, 0, current_round_data.bettors);
+        let new_round_data = RoundData::new(Phase::REVEAL, (timestamp + phase_length) as u120, 0, current_round_data.bettors, 0);
         storage.rounds.at(round_id).write(new_round_data);
 
         storage.results.at(round_id).write(answer as bool);
@@ -287,16 +308,16 @@ contract CoinToss {
 
     #[aztec(public)]
     internal fn _increase_reveals(round_id: Field, user_bet: Field) {
-        let current_round_id = storage.round_id.read();
-        assert(current_round_id == round_id, "Round id mismatch");
+        let timestamp = context.timestamp() as u120;
 
-        let current_round_data = storage.rounds.at(current_round_id).read();
-        assert(current_round_data.phase == Phase::REVEAL, "Reveal phase over");
+        let round_data = storage.rounds.at(round_id).read();
+        assert(round_data.phase == Phase::REVEAL, "Reveal phase over");
+        assert(timestamp < round_data.current_phase_end, "Reveal phase finished");
 
         let results = storage.results.at(round_id).read();
         assert(results == user_bet as bool, "User bet does not match result");
 
-        let updated_round_data = current_round_data.increase_reveal_count();
+        let updated_round_data = round_data.increase_reveal_count();
         storage.rounds.at(round_id).write(updated_round_data);
     }
 
@@ -359,13 +380,12 @@ contract CoinToss {
             storage.reveals.insert(&mut reveal_note, true);
 
             storage.bets.remove(bet_note);
-            
+
             let selector = compute_selector("_increase_reveals(Field,Field)");
             context.call_public_function(context.this_address(), selector, [round_id, user_bet as Field]);
         } else {
             assert(false, "Bet note not found");
         }
-
     }
 
     /////////////////////////////////////////////////////////////////////
