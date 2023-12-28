@@ -75,6 +75,7 @@ describe("E2E Coin Toss", () => {
   let bettors: number = 0;
   let winners: number = 0;
   let claimAmount: bigint;
+  let revealPhaseEnd: number
 
   // Setup: Deploy the contracts and mint tokens, ready for escrow
   beforeAll(async () => {
@@ -345,6 +346,10 @@ describe("E2E Coin Toss", () => {
   });
 
   describe('reveal', () => {
+    beforeAll(async () => {
+      revealPhaseEnd = await coinToss.methods.get_round_data(roundId).view().then((roundData: any) => Number(roundData.current_phase_end));
+    })
+
     it('tx gets mined', async () => {
       const receipt = await coinToss.withWallet(user).methods.reveal(roundId, bets[0].randomness).send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
@@ -400,7 +405,13 @@ describe("E2E Coin Toss", () => {
       .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Bet note not found 'false'");
     });
 
-    it.skip('reverts if the round id is incorrect', async () => {
+    // Need a second bet to test this
+    it.skip('should revert if the timestamp of the reveal phase has elapsed', async () => {
+      await cc.aztec.warp(revealPhaseEnd);
+      const revealTx = coinToss.withWallet(user).methods.reveal(roundId, bets[0].randomness).simulate();
+      await expect(revealTx)
+        .rejects
+        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Reveal phase finished 'timestamp < round_data.current_phase_end'");
     });
 
     it.skip('reverts if the phase is not reveal', async () => {
@@ -411,20 +422,26 @@ describe("E2E Coin Toss", () => {
   });
 
   describe('end_reveal_phase', () => {
-    let currentTime: number
 
     it.skip('reverts if the phase is not reveal', async () => {
+    })
+
+    it('reverts if the timestamp has not reached the end of the phase', async () => {
+      const endRevealPhaseTx = coinToss.withWallet(user).methods.end_reveal_phase().simulate();
+      
+      await expect(endRevealPhaseTx)
+        .rejects
+        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Reveal phase not finished 'timestamp >= current_round_data.current_phase_end'");
     })  
 
     it('tx gets mined', async () => {
-      currentTime = await cc.eth.timestamp() + 1;
-      await cc.aztec.warp(currentTime);
+      await cc.aztec.warp(revealPhaseEnd + 1);
       const receipt = await coinToss.withWallet(user).methods.end_reveal_phase().send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
     });
     
     it('updates the round data correctly', async () => {
-      const phaseEnd = currentTime + PHASE_LENGTH;
+      const phaseEnd = revealPhaseEnd + 1 + PHASE_LENGTH;
       const storedRoundData = await coinToss.methods.get_round_data(roundId).view();
       claimAmount = BigInt(bettors) * BET_AMOUNT / BigInt(winners);
        
