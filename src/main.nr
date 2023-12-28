@@ -33,6 +33,8 @@ contract CoinToss {
             ToTransferStruct,
             FromUnshieldStruct,
             ToUnshieldStruct,
+            FromShieldStruct,
+            TokenPublicContextInterface
         }
     };
 
@@ -319,6 +321,24 @@ contract CoinToss {
         storage.rounds.at(round_id).write(updated_round_data);
     }
 
+    #[aztec(public)]
+    internal fn _claim_funds(round_id: Field, secret_hash: Field) {
+        let address_this = AztecAddress::new(context.this_address());
+        let token = TokenPublicContextInterface::at(storage.token_address.read().address);
+
+        let round_data = storage.rounds.at(round_id).read();
+
+        let claim_amount = round_data.claim_amount;
+
+        let _ = token.shield(
+            context,
+            FromShieldStruct { address: address_this.address },
+            claim_amount as Field,
+            secret_hash,
+            0
+        );
+    }
+
     /////////////////////////////////////////////////////////////////////
     //                   Private internal functions                    //
     /////////////////////////////////////////////////////////////////////
@@ -383,6 +403,23 @@ contract CoinToss {
             context.call_public_function(context.this_address(), selector, [round_id, user_bet as Field]);
         } else {
             assert(false, "Bet note not found");
+        }
+    }
+
+    #[aztec(private)]
+    fn claim(round_id: Field, secret_hash: Field) {
+        let bettor = AztecAddress::new(context.msg_sender());
+        let options = NoteGetterOptions::new().select(0, bettor.address).select(1, round_id).set_limit(1);
+        let reveal_notes = storage.reveals.get_notes(options);
+
+        if (reveal_notes[0].is_some()) {
+            let reveal_note = reveal_notes[0].unwrap_unchecked();
+            storage.reveals.remove(reveal_note);
+
+            let selector = compute_selector("_claim_funds(Field,Field)");
+            context.call_public_function(context.this_address(), selector, [round_id,secret_hash]);
+        } else {
+            assert(false, "Reveal note not found");
         }
     }
 

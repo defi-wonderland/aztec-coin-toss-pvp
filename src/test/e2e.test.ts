@@ -70,8 +70,11 @@ beforeAll(async () => {
 describe("E2E Coin Toss", () => {
 
   let roundId = 0n;
-  let firstBet: BetNote;
+  let bets: BetNote[];
   let answer: number;
+  let bettors: number = 0;
+  let winners: number = 0;
+  let claimAmount: bigint;
 
   // Setup: Deploy the contracts and mint tokens, ready for escrow
   beforeAll(async () => {
@@ -88,7 +91,11 @@ describe("E2E Coin Toss", () => {
     oracle = oracleReceipt.contract;
 
     // Mint the tokens
-    await mintTokenFor(user, deployer, MINT_TOKENS);
+    await Promise.all(
+      [deployer, user, user2, user3].map((account) =>
+        mintTokenFor(account, deployer, MINT_TOKENS)
+      )
+    );
 
     // Deploy Coin Toss
     const coinTossReceipt = await CoinTossContract.deploy(
@@ -169,7 +176,7 @@ describe("E2E Coin Toss", () => {
 
   describe('bet', () => {
     it("reverts if the round id is not the current one", async () => {
-      firstBet = createUserBetNotes(1)[0];
+      bets = createUserBetNotes(3);
       const unshieldNonce = Fr.random();
       const roundId = await coinToss.withWallet(user).methods.get_round_id().view();
       const wrongRoundId = roundId + 1n
@@ -178,7 +185,7 @@ describe("E2E Coin Toss", () => {
       await createAuth(unshieldAction, user, coinToss.address);
 
       // Simulate the transaction
-      const betTx = coinToss.withWallet(user).methods.bet(firstBet.bet, wrongRoundId, firstBet.randomness, unshieldNonce).simulate();
+      const betTx = coinToss.withWallet(user).methods.bet(bets[0].bet, wrongRoundId, bets[0].randomness, unshieldNonce).simulate();
       await expect(betTx).rejects.toThrow("(JSON-RPC PROPAGATED) Assertion failed: Round id mismatch 'current_round_id == round_id'");    
     })
 
@@ -194,19 +201,42 @@ describe("E2E Coin Toss", () => {
       await createAuth(unshieldAction, user, coinToss.address);
       
       // Send the transaction
-      const receipt = await coinToss.withWallet(user).methods.bet(firstBet.bet, firstBet.round_id, firstBet.randomness, unshieldNonce).send().wait()
+      const receipt = await coinToss.withWallet(user).methods.bet(bets[0].bet, bets[0].round_id, bets[0].randomness, unshieldNonce).send().wait()
       expect(receipt.status).toBe("mined");
+      bettors++;
     })
 
+    it("allows multiple users to bet", async () => {
+      const unshieldNonce = Fr.random();
+
+      // Create authwit so that cointoss can call unshield as the recipient
+      const unshieldAction2 = await token.withWallet(user2).methods.unshield(user2.getAddress(), coinToss.address, BET_AMOUNT, unshieldNonce);
+      await createAuth(unshieldAction2, user2, coinToss.address);
+      
+      // Send the transaction
+      const receipt2 = await coinToss.withWallet(user2).methods.bet(bets[1].bet, bets[1].round_id, bets[1].randomness, unshieldNonce).send().wait()
+      expect(receipt2.status).toBe("mined");
+      bettors++;
+
+      // Create authwit so that cointoss can call unshield as the recipient
+      const unshieldAction3 = await token.withWallet(user3).methods.unshield(user3.getAddress(), coinToss.address, BET_AMOUNT, unshieldNonce);
+      await createAuth(unshieldAction3, user3, coinToss.address);
+      
+      // Send the transaction
+      const receipt3 = await coinToss.withWallet(user3).methods.bet(!bets[2].bet, bets[2].round_id, bets[2].randomness, unshieldNonce).send().wait()
+      expect(receipt3.status).toBe("mined");
+      bettors++;
+    });
+
     it("nullifies randomness", async () => {
-      const result = await coinToss.withWallet(user).methods.is_round_randomness_nullified(firstBet.round_id, firstBet.randomness).view({from: user.getAddress()});
+      const result = await coinToss.withWallet(user).methods.is_round_randomness_nullified(bets[0].round_id, bets[0].randomness).view({from: user.getAddress()});
       expect(result).toBe(true);
     })
 
     it("increases public balance of coin toss by bet amount", async () => {
       const coinTossBalance = await token.methods.balance_of_public(coinToss.address).view();
       // Because this is the first bet, the cointoss public balance previous to the bet is assumed to be 0.
-      expect(coinTossBalance).toBe(BET_AMOUNT);
+      expect(coinTossBalance).toBe(BET_AMOUNT * BigInt(bettors));
     })
 
     it("reduces private balance of the user by bet amount", async () => {
@@ -215,8 +245,8 @@ describe("E2E Coin Toss", () => {
     })
 
     it("increases the amount of bettors", async () => {
-      const roundData = await coinToss.withWallet(user).methods.get_round_data(firstBet.round_id).view();
-      expect(roundData.bettors).toBe(1n);
+      const roundData = await coinToss.withWallet(user).methods.get_round_data(bets[0].round_id).view();
+      expect(roundData.bettors).toBe(BigInt(bettors));
     })
 
     it("creates a bet note for the user with the correct parameters", async () => {
@@ -231,10 +261,10 @@ describe("E2E Coin Toss", () => {
 
       // Check: Compare the note's data with the expected values
       const betNote: BetNote = {
-        owner: firstBet.owner,
-        round_id: firstBet.round_id,
-        bet: firstBet.bet,
-        randomness: firstBet.randomness
+        owner: bets[0].owner,
+        round_id: bets[0].round_id,
+        bet: bets[0].bet,
+        randomness: bets[0].randomness
       };
 
       expect(bet).toEqual(expect.objectContaining(betNote));
@@ -249,17 +279,17 @@ describe("E2E Coin Toss", () => {
     beforeAll(async () => {
       callback = [coinToss.address, roundId, 0, 0, 0, 0];
 
-      // Create auth for user to escrow tokens to the oracle
-      const escrowAction = token.methods.escrow(user.getAddress(), oracle.address, ORACLE_FEE, nonce);
-      await createAuth(escrowAction, user, oracle.address);
+      // Create auth for deployer to escrow tokens to the oracle
+      const escrowAction = token.methods.escrow(deployer.getAddress(), oracle.address, ORACLE_FEE, nonce);
+      await createAuth(escrowAction, deployer, oracle.address);
 
-      // Create auth for coin toss to create a question for the user
-      const submitQuestionAction = oracle.methods.submit_question(user.getAddress(), roundId, divinity.getAddress(), nonce, callback);
-      await createAuth(submitQuestionAction, user, coinToss.address);
+      // Create auth for coin toss to create a question for the deployer
+      const submitQuestionAction = oracle.methods.submit_question(deployer.getAddress(), roundId, divinity.getAddress(), nonce, callback);
+      await createAuth(submitQuestionAction, deployer, coinToss.address);
     });
 
     it('reverts if the betting phase did not end', async () => {
-      const rollTx = coinToss.withWallet(user).methods.roll(roundId, nonce).simulate();
+      const rollTx = coinToss.withWallet(deployer).methods.roll(roundId, nonce).simulate();
       await expect(rollTx).rejects.toThrow("(JSON-RPC PROPAGATED) Assertion failed: Bet phase not finished 'timestamp >= current_round_data.current_phase_end'");
     });
     
@@ -270,7 +300,7 @@ describe("E2E Coin Toss", () => {
       await cc.aztec.warp(betPhaseEnd + 1);
 
       // Roll
-      const rollReceipt = await coinToss.withWallet(user).methods.roll(roundId, nonce).send().wait();
+      const rollReceipt = await coinToss.withWallet(deployer).methods.roll(roundId, nonce).send().wait();
       expect(rollReceipt.status).toBe(TxStatus.MINED);
     })
 
@@ -285,19 +315,19 @@ describe("E2E Coin Toss", () => {
     let currentTime: number;
 
     it('tx gets mined', async () => {
-      answer = Number(firstBet.bet);
+      answer = Number(bets[0].bet);
 
       currentTime = await cc.eth.timestamp() + 1;
       await cc.aztec.warp(currentTime);
 
-      const receipt = await oracle.withWallet(divinity).methods.submit_answer(roundId, user.getAddress(), answer).send().wait();
+      const receipt = await oracle.withWallet(divinity).methods.submit_answer(roundId, deployer.getAddress(), answer).send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
     });
 
     it('updates the round data', async () => {
       const currentRound = await coinToss.methods.get_round_data(roundId).view();
       expect(currentRound.phase).toBe(3n);
-      expect(currentRound.bettors).toBe(1n);
+      expect(currentRound.bettors).toBe(BigInt(bettors));
       expect(Number(currentRound.current_phase_end)).toBe(currentTime + PHASE_LENGTH);
     });
 
@@ -316,8 +346,9 @@ describe("E2E Coin Toss", () => {
 
   describe('reveal', () => {
     it('tx gets mined', async () => {
-      const receipt = await coinToss.withWallet(user).methods.reveal(roundId, firstBet.randomness).send().wait();
+      const receipt = await coinToss.withWallet(user).methods.reveal(roundId, bets[0].randomness).send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
+      winners++;
     });
 
     it('nullifies bet note', async () => {
@@ -326,9 +357,15 @@ describe("E2E Coin Toss", () => {
           .withWallet(user)
           .methods.get_user_bets_unconstrained(0n)
           .view({ from: user.getAddress() })
-      ).find((noteObj: any) => noteObj._value.randomness == firstBet.randomness && noteObj._value.round_id == firstBet.round_id);
+      ).find((noteObj: any) => noteObj._value.randomness == bets[0].randomness && noteObj._value.round_id == bets[0].round_id);
 
       expect(betNote).toBeUndefined();
+    });
+
+    it('allows multiple users to reveal', async() => {
+      const receipt = await coinToss.withWallet(user2).methods.reveal(roundId, bets[1].randomness).send().wait();
+      expect(receipt.status).toBe(TxStatus.MINED);
+      winners++;
     });
 
     it('creates reveal note for the user', async () => {
@@ -343,9 +380,9 @@ describe("E2E Coin Toss", () => {
 
       // Check: Compare the note's data with the expected values
       const expectedRevealNote: RevealNote = {
-        owner: firstBet.owner,
+        owner: bets[0].owner,
         round_id: roundId,
-        randomness: firstBet.randomness
+        randomness: bets[0].randomness
       };
 
       expect(expectedRevealNote).toEqual(expect.objectContaining(revealNote));
@@ -353,11 +390,11 @@ describe("E2E Coin Toss", () => {
 
     it('increases reveal count in the round data', async () => {
       const currentRound = await coinToss.methods.get_round_data(roundId).view();
-      expect(currentRound.reveals_count).toBe(1n);
+      expect(currentRound.reveals_count).toBe(BigInt(winners));
     });
 
     it('reverts if there is no matching bet note', async () => {
-      const revealTx = coinToss.withWallet(user).methods.reveal(roundId, firstBet.randomness).simulate();
+      const revealTx = coinToss.withWallet(user).methods.reveal(roundId, bets[0].randomness).simulate();
       await expect(revealTx)
       .rejects
       .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Bet note not found 'false'");
@@ -374,13 +411,7 @@ describe("E2E Coin Toss", () => {
   });
 
   describe('end_reveal_phase', () => {
-    let realNumberOfWinners: bigint;
-    let realNumberOfBettors: bigint;
     let currentTime: number
-    beforeAll(async () => {
-      realNumberOfWinners = 1n;
-      realNumberOfBettors = 1n;
-    });
 
     it.skip('reverts if the phase is not reveal', async () => {
     })  
@@ -395,24 +426,70 @@ describe("E2E Coin Toss", () => {
     it('updates the round data correctly', async () => {
       const phaseEnd = currentTime + PHASE_LENGTH;
       const storedRoundData = await coinToss.methods.get_round_data(roundId).view();
-      const claimAmount = realNumberOfBettors * BET_AMOUNT / realNumberOfWinners;
-
-      const expectedRoundData = {
-        phase: 4n,
-        current_phase_end: BigInt(phaseEnd),
-        bettors: realNumberOfBettors,
-        reveals_count: realNumberOfWinners,
-        claim_amount: claimAmount
-      }
-
-      expect(storedRoundData.phase).toEqual(expectedRoundData.phase);
-      expect(storedRoundData.current_phase_end).toEqual(expectedRoundData.current_phase_end);
-      expect(storedRoundData.bettors).toEqual(expectedRoundData.bettors);
-      expect(storedRoundData.reveals_count).toEqual(expectedRoundData.reveals_count);
-      expect(storedRoundData.claim_amount).toEqual(expectedRoundData.claim_amount);
+      claimAmount = BigInt(bettors) * BET_AMOUNT / BigInt(winners);
+       
+      expect(storedRoundData.phase).toEqual(4n);
+      expect(storedRoundData.current_phase_end).toEqual(BigInt(phaseEnd));
+      expect(storedRoundData.bettors).toEqual(BigInt(bettors));
+      expect(storedRoundData.reveals_count).toEqual(BigInt(winners));
+      expect(storedRoundData.claim_amount).toEqual(claimAmount);
     })
   });
 
+  describe('claim', () => {
+    let coinTossPublicBalanceBefore: bigint;
+    let secret: Fr;
+
+    it('tx gets mined', async () => {
+      coinTossPublicBalanceBefore = await token.methods.balance_of_public(coinToss.address).view();
+
+      secret = Fr.random();
+      const secret_hash = await computeMessageSecretHash(secret);
+      const receipt = await coinToss.withWallet(user).methods.claim(roundId, secret_hash).send().wait();
+      expect(receipt.status).toBe(TxStatus.MINED);
+      await addPendingShieldNoteToPXE(user, claimAmount, secret_hash, receipt.txHash)
+    });
+
+    it('reduces the public balance of the coin toss', async () => {
+      const coinTossBalance = await token.methods.balance_of_public(coinToss.address).view();
+      expect(coinTossBalance).toBe(coinTossPublicBalanceBefore - claimAmount);
+    });
+
+    it('user can then claim the pending shield with the secret', async () => {
+      const privateBalanceBefore = await token.methods.balance_of_private(user.getAddress()).view();
+      
+      await token.withWallet(user).methods.redeem_shield(user.getAddress(), claimAmount, secret).send().wait();
+
+      const privateBalanceAfter = await token.methods.balance_of_private(user.getAddress()).view();
+
+      expect(privateBalanceAfter).toBe(privateBalanceBefore + claimAmount);
+    });
+
+    it('nullifies the reveal note', async () => {
+      const revealNote = 
+          (await coinToss
+            .withWallet(user)
+            .methods.get_reveal_notes_unconstrained(0n)
+            .view({ from: user.getAddress() }))
+            .find((noteObj: any) => noteObj._value.randomness == bets[0].randomness && noteObj._value.round_id == bets[0].round_id);
+
+      expect(revealNote).toBeUndefined();
+    });
+
+    it('reverts when trying to claim without a reveal note', async () => {
+      const secret_hash = await computeMessageSecretHash(secret);
+      const claimTx = coinToss.withWallet(user3).methods.claim(roundId, secret_hash).simulate();
+      await expect(claimTx)
+        .rejects
+        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Reveal note not found 'false'");
+    });
+
+    it('allows all the winners to claim', async () => {
+      const secret_hash = await computeMessageSecretHash(secret);
+      const receipt = await coinToss.withWallet(user2).methods.claim(roundId, secret_hash).send().wait();
+      expect(receipt.status).toBe(TxStatus.MINED);
+    });
+  });
 });
 
 // Create an array of mock bet notes
@@ -424,7 +501,7 @@ function createUserBetNotes(number: number = 3): BetNote[] {
     betNote = new BetNote({
       owner: user.getAddress(),
       round_id: 1n,
-      bet: !!(i % 2), // 0: Heads, 1: Tails
+      bet: true,
       randomness: Fr.random().toBigInt(),
     });
 
