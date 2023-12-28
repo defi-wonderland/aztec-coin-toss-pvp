@@ -47,6 +47,20 @@ impl CoinTossPrivateContextInterface {
   }
   
 
+  pub fn end_reveal_phase(
+    self,
+    context: &mut PrivateContext,
+    number_of_winners: u120,
+    number_of_bettors: u120
+  ) {
+    let mut serialized_args = [0; 2];
+    serialized_args[0] = number_of_winners as Field;
+    serialized_args[1] = number_of_bettors as Field;
+
+    context.call_public_function(self.address, 0x54d022e0, serialized_args)
+  }
+  
+
   pub fn initialize(
     self,
     context: &mut PrivateContext,
@@ -139,6 +153,20 @@ impl CoinTossPublicContextInterface {
       }
   }
   
+  pub fn end_reveal_phase(
+    self,
+    context: PublicContext,
+    number_of_winners: u120,
+    number_of_bettors: u120
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 2];
+    serialized_args[0] = number_of_winners as Field;
+    serialized_args[1] = number_of_bettors as Field;
+
+    context.call_public_function(self.address, 0x54d022e0, serialized_args)
+  }
+  
+
   pub fn initialize(
     self,
     context: PublicContext,
