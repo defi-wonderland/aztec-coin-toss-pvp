@@ -47,6 +47,16 @@ impl CoinTossPrivateContextInterface {
   }
   
 
+  pub fn end_reveal_phase(
+    self,
+    context: &mut PrivateContext
+  ) {
+    let mut serialized_args = [0; 0];
+
+    context.call_public_function(self.address, 0x0b2d8f06, serialized_args)
+  }
+  
+
   pub fn initialize(
     self,
     context: &mut PrivateContext,
@@ -82,6 +92,20 @@ impl CoinTossPrivateContextInterface {
     serialized_args[5] = data[4];
 
     context.call_private_function(self.address, 0x8853c9d8, serialized_args)
+  }
+  
+
+  pub fn reveal(
+    self,
+    context: &mut PrivateContext,
+    round_id: Field,
+    user_randomness: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 2];
+    serialized_args[0] = round_id;
+    serialized_args[1] = user_randomness;
+
+    context.call_private_function(self.address, 0xb8886ebe, serialized_args)
   }
   
 
@@ -125,6 +149,16 @@ impl CoinTossPublicContextInterface {
       }
   }
   
+  pub fn end_reveal_phase(
+    self,
+    context: PublicContext
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 0];
+
+    context.call_public_function(self.address, 0x0b2d8f06, serialized_args)
+  }
+  
+
   pub fn initialize(
     self,
     context: PublicContext,
