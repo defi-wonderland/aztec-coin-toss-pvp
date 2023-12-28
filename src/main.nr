@@ -319,7 +319,7 @@ contract CoinToss {
         let results = storage.results.at(round_id).read();
         assert(results == user_bet as bool, "User bet does not match result");
 
-        let updated_round_data = current_round_data.increase_reveal_count();
+        let updated_round_data = round_data.increase_reveal_count();
         storage.rounds.at(round_id).write(updated_round_data);
     }
 
