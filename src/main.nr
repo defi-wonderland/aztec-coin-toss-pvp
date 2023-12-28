@@ -190,8 +190,10 @@ contract CoinToss {
         let current_round_data = storage.rounds.at(current_round_id).read();
         let number_of_bettors = current_round_data.bettors;
         let number_of_winners = current_round_data.reveals_count;
+        let timestamp = context.timestamp() as u120;
 
         assert(current_round_data.phase == Phase::REVEAL, "Reveal phase over");
+        assert(timestamp >= current_round_data.current_phase_end, "Reveal phase not finished");
         
         let bet_amount = storage.bet_amount.read() as u120;
         let claim_amount = number_of_bettors * bet_amount / number_of_winners;
@@ -306,16 +308,16 @@ contract CoinToss {
 
     #[aztec(public)]
     internal fn _increase_reveals(round_id: Field, user_bet: Field) {
-        let current_round_id = storage.round_id.read();
-        assert(current_round_id == round_id, "Round id mismatch");
+        let timestamp = context.timestamp() as u120;
 
-        let current_round_data = storage.rounds.at(current_round_id).read();
-        assert(current_round_data.phase == Phase::REVEAL, "Reveal phase over");
+        let round_data = storage.rounds.at(round_id).read();
+        assert(round_data.phase == Phase::REVEAL, "Reveal phase over");
+        assert(timestamp < round_data.current_phase_end, "Reveal phase finished");
 
         let results = storage.results.at(round_id).read();
         assert(results == user_bet as bool, "User bet does not match result");
 
-        let updated_round_data = current_round_data.increase_reveal_count();
+        let updated_round_data = round_data.increase_reveal_count();
         storage.rounds.at(round_id).write(updated_round_data);
     }
 
