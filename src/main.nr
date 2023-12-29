@@ -34,7 +34,9 @@ contract CoinToss {
             FromUnshieldStruct,
             ToUnshieldStruct,
             FromShieldStruct,
-            TokenPublicContextInterface
+            TokenPublicContextInterface,
+            FromShieldPrivateStruct,
+            ToShieldPrivateStruct
         }
     };
 
@@ -339,24 +341,12 @@ contract CoinToss {
     /// @notice         Shields the winnings back to the user
     /// @custom:privacy public
     /// @param          round_id The id of the current round
-    /// @param          secret_hash The secret hash of the user
+    /// @param          amount The amount to claim for winning the round
     #[aztec(public)]
-    internal fn _claim_funds(round_id: Field, secret_hash: Field) {
-        let address_this = AztecAddress::new(context.this_address());
-        let token = TokenPublicContextInterface::at(storage.token_address.read().address);
-
+    internal fn _validate_claim(round_id: Field, amount: Field) {
         let round_data = storage.rounds.at(round_id).read();
-
         let claim_amount = round_data.claim_amount;
-
-        /// Shields the winnings back to the user with the secret hash they provided
-        let _ = token.shield(
-            context,
-            FromShieldStruct { address: address_this.address },
-            claim_amount as Field,
-            secret_hash,
-            0
-        );
+        assert(claim_amount == amount as u120, "Claim amount mismatch");
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -467,10 +457,13 @@ contract CoinToss {
     /// @notice         Called by the user to claim their winnings
     /// @custom:privacy private
     /// @param          round_id The id of the current round
-    /// @param          secret_hash The secret hash used for the shield
+    /// @param          amount The amount to claim for winning the round
     #[aztec(private)]
-    fn claim(round_id: Field, secret_hash: Field) {
+    fn claim(round_id: Field, amount: Field) {
+        let config_note = storage.config.get_note();
+        let token = TokenPrivateContextInterface::at(config_note.token.address);
         let bettor = AztecAddress::new(context.msg_sender());
+        let address_this = AztecAddress::new(context.this_address());
         let options = NoteGetterOptions::new().select(0, bettor.address).select(1, round_id).set_limit(1);
         let reveal_notes = storage.reveals.get_notes(options);
 
@@ -479,8 +472,17 @@ contract CoinToss {
             /// Nullifies the reveal note
             storage.reveals.remove(reveal_note);
 
-            let selector = compute_selector("_claim_funds(Field,Field)");
-            context.call_public_function(context.this_address(), selector, [round_id,secret_hash]);
+            // Shields privately to the user
+            let _ = token.shield_private(
+                &mut context,
+                FromShieldPrivateStruct { address: address_this.address }, 
+                ToShieldPrivateStruct {address: bettor.address }, 
+                amount, 
+                0
+            );
+
+            let selector = compute_selector("_validate_claim(Field,Field)");
+            context.call_public_function(context.this_address(), selector, [round_id,amount]);
         } else {
             assert(false, "Reveal note not found");
         }
