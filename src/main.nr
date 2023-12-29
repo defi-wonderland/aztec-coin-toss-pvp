@@ -387,7 +387,7 @@ contract CoinToss {
             unshield_nonce
         );
 
-        // Create a bet note for the user. This method nullifies the randomness and round_id combinarion.
+        // Create a bet note for the user. This method nullifies the randomness and round_id combination.
         let mut user_bet: BetNote = BetNote::new(&mut context, bettor, round_id, bet, bet_randomness);
         storage.bets.insert(&mut user_bet, true);
 
