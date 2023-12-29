@@ -83,8 +83,18 @@ contract CoinToss {
     global BETS_SLOT = 10;
     global REVEALS_SLOT = 11;
 
+    /// @notice The storage of the contract
+    /// @member round_id The id of the current round
+    /// @member phase_length The length of each phase
+    /// @member bet_amount The amount of each bet
+    /// @member oracle_address The address of the private oracle
+    /// @member divinity_address The address of the divinity contract
+    /// @member token_address The address of the token used to bet
+    /// @member results Saves the result of each round id
+    /// @member rounds Saves the round data for each round id
     /// @member config The config note, containing the divinity address, the private oracle address, the token address and the bet amount
     /// @member bets The set of bet notes (ie active bets)
+    /// @member reveals The set of reveal notes
     struct Storage {
         ////////////////////////////// public //////////////////////////
         round_id: PublicState<Field, FIELD_SERIALIZED_LEN>,
@@ -163,7 +173,7 @@ contract CoinToss {
         let mut config_note = ConfigNote::new(divinity, private_oracle, token, bet_amount);
         storage.config.initialize(&mut config_note, Option::none(), false);
 
-        let selector = compute_selector("initialize(Field,Field,(Field),(Field),(Field))");
+        let selector = compute_selector("_initialize(Field,Field,(Field),(Field),(Field))");
         context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
     }
 
@@ -171,6 +181,8 @@ contract CoinToss {
     //                   Public external functions                    //
     /////////////////////////////////////////////////////////////////////
 
+    /// @notice         Starts a new round only when the previous round already left the betting phase
+    /// @custom:privacy public
     #[aztec(public)]
     fn start_next_round() {
         let timestamp = context.timestamp();
@@ -178,6 +190,7 @@ contract CoinToss {
 
         let current_round_id = storage.round_id.read();
         if(current_round_id != 0) {
+            /// Checks that the previous round is finished
             let current_round_data = storage.rounds.at(storage.round_id.read()).read();
             assert(current_round_data.phase >= Phase::REVEAL, "Current round not finished");
         }
@@ -186,6 +199,8 @@ contract CoinToss {
         storage.rounds.at(next_round_id).write(RoundData::new(Phase::BETTING, (timestamp + phase_length) as u120, 0, 0, 0));
     }
 
+    /// @notice         Ends the reveal phase when enough time has passed
+    /// @custom:privacy public
     #[aztec(public)]
     fn end_reveal_phase() {
         let current_round_id = storage.round_id.read(); 
@@ -194,10 +209,12 @@ contract CoinToss {
         let number_of_winners = current_round_data.reveals_count;
         let timestamp = context.timestamp() as u120;
 
+        /// Checks that the current round is in the reveal phase and that enough time has passed
         assert(current_round_data.phase == Phase::REVEAL, "Reveal phase over");
         assert(timestamp >= current_round_data.current_phase_end, "Reveal phase not finished");
         
         let bet_amount = storage.bet_amount.read() as u120;
+        /// Calculates the claim amount based on the number of bettors and winners
         let claim_amount = number_of_bettors * bet_amount / number_of_winners;
 
         let timestamp = context.timestamp() as u120;
@@ -211,10 +228,15 @@ contract CoinToss {
     //                   Public internal functions                    //
     /////////////////////////////////////////////////////////////////////
 
+    /// @notice         Initializes the contract
+    /// @custom:privacy public
+    /// @param          phase_length The length of each phase
+    /// @param          bet_amount The amount of each bet
+    /// @param          oracle_address The address of the private oracle
+    /// @param          divinity_address The address of the divinity contract
+    /// @param          token_address The address of the token used to bet
     #[aztec(public)]
-    fn initialize(phase_length: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
-        assert(context.msg_sender() == context.this_address());
-
+    internal fn _initialize(phase_length: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
         storage.phase_length.write(phase_length);
         storage.bet_amount.write(bet_amount);
         storage.oracle_address.write(oracle_address);
@@ -222,8 +244,11 @@ contract CoinToss {
         storage.token_address.write(token_address);
     }
 
+    /// @notice         Ends the bet phase
+    /// @custom:privacy public
+    /// @param          round_id The id of the current round
     #[aztec(public)]
-    internal fn end_bet_phase(round_id: Field) {
+    internal fn _end_bet_phase(round_id: Field) {
         let timestamp = context.timestamp() as u120;
         let phase_length = storage.phase_length.read() as u120;
 
@@ -242,9 +267,108 @@ contract CoinToss {
         storage.rounds.at(current_round_id).write(new_round_data);
     }
 
+    /// @notice         Increases the number of bettors
+    /// @custom:privacy public
+    /// @param          round_id The id of the current round
+    #[aztec(public)]
+    internal fn _increase_bettors(round_id: Field) {
+        let current_round_id = storage.round_id.read();
+        /// Checks that the round id is the current one
+        assert(current_round_id == round_id, "Round id mismatch");
+
+        /// Checks that the current round is in the betting phase
+        let current_round_data = storage.rounds.at(current_round_id).read();
+        assert(current_round_data.phase >= Phase::BETTING, "Betting phase over");
+
+        /// Adds a bettor to the current round
+        let updated_round_data = current_round_data.add_bettor();
+        storage.rounds.at(round_id).write(updated_round_data);
+    }
+
+    /// @notice         Sets the result of the bet round
+    /// @custom:privacy public
+    /// @param          caller The caller of the function (the oracle)
+    /// @param          round_id The id of the current round
+    #[aztec(public)]
+    internal fn _set_result(caller: Field, round_id: Field, answer: Field) {
+        let oracle = storage.oracle_address.read();
+        let timestamp = context.timestamp() as u120;
+        let phase_length = storage.phase_length.read() as u120;
+
+        /// Checks that the caller is the oracle
+        assert(caller == oracle.address, "Caller is not the oracle");
+
+        /// Checks that the round id is the current one
+        let current_round_id = storage.round_id.read();
+        assert(current_round_id == round_id, "Round id mismatch");
+
+        /// Checks that the current round is in the awaiting answer phase
+        let current_round_data = storage.rounds.at(current_round_id).read();
+        assert(current_round_data.phase == Phase::AWAITING_ANSWER, "Not in awaiting answer phase");
+
+        let new_round_data = RoundData::new(Phase::REVEAL, (timestamp + phase_length) as u120, 0, current_round_data.bettors, 0);
+        storage.rounds.at(round_id).write(new_round_data);
+
+        /// Updates the result mapping
+        storage.results.at(round_id).write(answer as bool);
+    }
+
+    /// @notice         Increases the number of reveals
+    /// @custom:privacy public
+    /// @param          round_id The id of the current round
+    /// @param          user_bet The bet of the user
+    #[aztec(public)]
+    internal fn _increase_reveals(round_id: Field, user_bet: Field) {
+        let timestamp = context.timestamp() as u120;
+
+        let round_data = storage.rounds.at(round_id).read();
+
+        /// Checks that the round is in the reveal phase and is not over
+        assert(round_data.phase == Phase::REVEAL, "Reveal phase over");
+        assert(timestamp < round_data.current_phase_end, "Reveal phase finished");
+
+        let results = storage.results.at(round_id).read();
+        /// Checks that the user bet matches the result
+        assert(results == user_bet as bool, "User bet does not match result");
+
+        /// Adds a revealer to the current round
+        let updated_round_data = round_data.increase_reveal_count();
+        storage.rounds.at(round_id).write(updated_round_data);
+    }
+
+    /// @notice         Shields the winnings back to the user
+    /// @custom:privacy public
+    /// @param          round_id The id of the current round
+    /// @param          secret_hash The secret hash of the user
+    #[aztec(public)]
+    internal fn _claim_funds(round_id: Field, secret_hash: Field) {
+        let address_this = AztecAddress::new(context.this_address());
+        let token = TokenPublicContextInterface::at(storage.token_address.read().address);
+
+        let round_data = storage.rounds.at(round_id).read();
+
+        let claim_amount = round_data.claim_amount;
+
+        /// Shields the winnings back to the user with the secret hash they provided
+        let _ = token.shield(
+            context,
+            FromShieldStruct { address: address_this.address },
+            claim_amount as Field,
+            secret_hash,
+            0
+        );
+    }
+
     /////////////////////////////////////////////////////////////////////
     //                   Private external functions                    //
     /////////////////////////////////////////////////////////////////////
+
+    /// @notice         Creates a bet note for the user
+    /// @custom:privacy private
+    /// @param          bet The bet of the user
+    /// @param          round_id The id of the current round
+    /// @param          bet_randomness The randomness provided by the user
+    /// @param          unshield_nonce The nonce of the unshield to take tokens from the user
     #[aztec(private)]
     fn bet(bet: bool, round_id: Field, bet_randomness: Field, unshield_nonce: Field) {
         let config_note = storage.config.get_note();
@@ -263,87 +387,13 @@ contract CoinToss {
             unshield_nonce
         );
 
-        // Create a bet note for the user. This method nullifies the randomness and round_id combinarion.
+        // Create a bet note for the user. This method nullifies the randomness and round_id combination.
         let mut user_bet: BetNote = BetNote::new(&mut context, bettor, round_id, bet, bet_randomness);
         storage.bets.insert(&mut user_bet, true);
 
         let selector = compute_selector("_increase_bettors(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
     }
-
-    /////////////////////////////////////////////////////////////////////
-    //                   Public internal functions                    //
-    /////////////////////////////////////////////////////////////////////
-    #[aztec(public)]
-    internal fn _increase_bettors(
-        round_id: Field,
-    ) {
-        let current_round_id = storage.round_id.read();
-        assert(current_round_id == round_id, "Round id mismatch");
-
-        let current_round_data = storage.rounds.at(current_round_id).read();
-        assert(current_round_data.phase >= Phase::BETTING, "Betting phase over");
-
-        let updated_round_data = current_round_data.add_bettor();
-        storage.rounds.at(round_id).write(updated_round_data);
-    }
-
-    #[aztec(public)]
-    internal fn _set_result(caller: Field, round_id: Field, answer: Field) {
-        let oracle = storage.oracle_address.read();
-        let timestamp = context.timestamp() as u120;
-        let phase_length = storage.phase_length.read() as u120;
-
-        assert(caller == oracle.address, "Caller is not the oracle");
-
-        let current_round_id = storage.round_id.read();
-        assert(current_round_id == round_id, "Round id mismatch");
-
-        let current_round_data = storage.rounds.at(current_round_id).read();
-        assert(current_round_data.phase == Phase::AWAITING_ANSWER, "Not in awaiting answer phase");
-
-        let new_round_data = RoundData::new(Phase::REVEAL, (timestamp + phase_length) as u120, 0, current_round_data.bettors, 0);
-        storage.rounds.at(round_id).write(new_round_data);
-
-        storage.results.at(round_id).write(answer as bool);
-    }
-
-    #[aztec(public)]
-    internal fn _increase_reveals(round_id: Field, user_bet: Field) {
-        let timestamp = context.timestamp() as u120;
-
-        let round_data = storage.rounds.at(round_id).read();
-        assert(round_data.phase == Phase::REVEAL, "Reveal phase over");
-        assert(timestamp < round_data.current_phase_end, "Reveal phase finished");
-
-        let results = storage.results.at(round_id).read();
-        assert(results == user_bet as bool, "User bet does not match result");
-
-        let updated_round_data = round_data.increase_reveal_count();
-        storage.rounds.at(round_id).write(updated_round_data);
-    }
-
-    #[aztec(public)]
-    internal fn _claim_funds(round_id: Field, secret_hash: Field) {
-        let address_this = AztecAddress::new(context.this_address());
-        let token = TokenPublicContextInterface::at(storage.token_address.read().address);
-
-        let round_data = storage.rounds.at(round_id).read();
-
-        let claim_amount = round_data.claim_amount;
-
-        let _ = token.shield(
-            context,
-            FromShieldStruct { address: address_this.address },
-            claim_amount as Field,
-            secret_hash,
-            0
-        );
-    }
-
-    /////////////////////////////////////////////////////////////////////
-    //                   Private internal functions                    //
-    /////////////////////////////////////////////////////////////////////
 
     /// @notice         Calls the oracle to get the result of the bet round
     /// @custom:privacy private
@@ -370,7 +420,7 @@ contract CoinToss {
 
         // End the bet phase and update public state
         // This checks that the round id is correct and that the phase is BETTING
-        let selector = compute_selector("end_bet_phase(Field)");
+        let selector = compute_selector("_end_bet_phase(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
     }
 
@@ -386,6 +436,10 @@ contract CoinToss {
         context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, answer]);
     }
 
+    /// @notice         Called by the user to reveal that they won
+    /// @custom:privacy private
+    /// @param          round_id The id of the current round
+    /// @param          user_randomness The randomness provided by the user
     #[aztec(private)]
     fn reveal(round_id: Field, user_randomness: Field) {
         let options = NoteGetterOptions::new().select(1, round_id).select(3, user_randomness).set_limit(1);
@@ -396,9 +450,11 @@ contract CoinToss {
             let bet_note = bet_notes[0].unwrap_unchecked();
             let user_bet = bet_note.bet;
             
+            /// Creates a reveal note for the user
             let mut reveal_note: RevealNote = RevealNote::new(bettor, round_id, user_randomness);
             storage.reveals.insert(&mut reveal_note, true);
 
+            /// Nullifies the bet note
             storage.bets.remove(bet_note);
 
             let selector = compute_selector("_increase_reveals(Field,Field)");
@@ -408,6 +464,10 @@ contract CoinToss {
         }
     }
 
+    /// @notice         Called by the user to claim their winnings
+    /// @custom:privacy private
+    /// @param          round_id The id of the current round
+    /// @param          secret_hash The secret hash used for the shield
     #[aztec(private)]
     fn claim(round_id: Field, secret_hash: Field) {
         let bettor = AztecAddress::new(context.msg_sender());
@@ -416,6 +476,7 @@ contract CoinToss {
 
         if (reveal_notes[0].is_some()) {
             let reveal_note = reveal_notes[0].unwrap_unchecked();
+            /// Nullifies the reveal note
             storage.reveals.remove(reveal_note);
 
             let selector = compute_selector("_claim_funds(Field,Field)");
@@ -473,34 +534,42 @@ contract CoinToss {
         }
     }
 
+    /// @notice         Returns the phase length
     unconstrained fn get_phase_length_unconstrained() -> Field {
         storage.phase_length.read()
     }
 
+    /// @notice         Returns the bet amount
     unconstrained fn get_bet_amount_unconstrained() -> Field {
         storage.bet_amount.read()
     }
 
+    /// @notice         Returns the oracle address
     unconstrained fn get_oracle_address_unconstrained() -> AztecAddress {
         storage.oracle_address.read()
     }
 
+    /// @notice         Returns the divinity address
     unconstrained fn get_divinity_address_unconstrained() -> AztecAddress {
         storage.divinity_address.read()
     }
 
+    /// @notice         Returns the token address
     unconstrained fn get_token_address_unconstrained() -> AztecAddress {
         storage.token_address.read()
     }
 
+    /// @notice         Returns the round id
     unconstrained fn get_round_id() -> Field {
         storage.round_id.read()
     }
 
+    /// @notice         Returns the round data for a given round id
     unconstrained fn get_round_data(round_id: Field) -> RoundData {
         storage.rounds.at(round_id).read()
     }
 
+    /// @notice         Returns the result for a given round id
     unconstrained fn get_result(round_id: Field) -> bool {
         storage.results.at(round_id).read()
     }
