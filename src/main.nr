@@ -341,10 +341,9 @@ contract CoinToss {
     /// @notice         Shields the winnings back to the user
     /// @custom:privacy public
     /// @param          round_id The id of the current round
-    /// @param          secret_hash The secret hash of the user
+    /// @param          amount The amount to claim for winning the round
     #[aztec(public)]
     internal fn _validate_claim(round_id: Field, amount: Field) {
-        let address_this = AztecAddress::new(context.this_address());
         let round_data = storage.rounds.at(round_id).read();
         let claim_amount = round_data.claim_amount;
         assert(claim_amount == amount as u120, "Claim amount mismatch");
@@ -458,7 +457,7 @@ contract CoinToss {
     /// @notice         Called by the user to claim their winnings
     /// @custom:privacy private
     /// @param          round_id The id of the current round
-    /// @param          secret_hash The secret hash used for the shield
+    /// @param          amount The amount to claim for winning the round
     #[aztec(private)]
     fn claim(round_id: Field, amount: Field) {
         let config_note = storage.config.get_note();
