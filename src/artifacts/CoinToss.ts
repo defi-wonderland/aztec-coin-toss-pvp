@@ -79,9 +79,6 @@ export class CoinTossContract extends ContractBase {
   /** Type-safe wrappers for the public methods exposed by the contract. */
   public methods!: {
     
-    /** _claim_funds(round_id: field, secret_hash: field) */
-    _claim_funds: ((round_id: FieldLike, secret_hash: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
     /** _increase_bettors(round_id: field) */
     _increase_bettors: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -91,11 +88,14 @@ export class CoinTossContract extends ContractBase {
     /** _set_result(caller: field, round_id: field, answer: field) */
     _set_result: ((caller: FieldLike, round_id: FieldLike, answer: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** _validate_claim(round_id: field, amount: field) */
+    _validate_claim: ((round_id: FieldLike, amount: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** bet(bet: boolean, round_id: field, bet_randomness: field, unshield_nonce: field) */
     bet: ((bet: boolean, round_id: FieldLike, bet_randomness: FieldLike, unshield_nonce: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** claim(round_id: field, secret_hash: field) */
-    claim: ((round_id: FieldLike, secret_hash: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+    /** claim(round_id: field, amount: field) */
+    claim: ((round_id: FieldLike, amount: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** compute_note_hash_and_nullifier(contract_address: field, nonce: field, storage_slot: field, preimage: array) */
     compute_note_hash_and_nullifier: ((contract_address: FieldLike, nonce: FieldLike, storage_slot: FieldLike, preimage: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;

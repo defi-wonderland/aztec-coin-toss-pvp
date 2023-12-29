@@ -455,16 +455,14 @@ describe("E2E Coin Toss", () => {
 
   describe('claim', () => {
     let coinTossPublicBalanceBefore: bigint;
-    let secret: Fr;
+    let userPrivateBalanceBefore: bigint;
 
     it('tx gets mined', async () => {
       coinTossPublicBalanceBefore = await token.methods.balance_of_public(coinToss.address).view();
+      userPrivateBalanceBefore = await token.methods.balance_of_private(user.getAddress()).view();
 
-      secret = Fr.random();
-      const secret_hash = await computeMessageSecretHash(secret);
-      const receipt = await coinToss.withWallet(user).methods.claim(roundId, secret_hash).send().wait();
+      const receipt = await coinToss.withWallet(user).methods.claim(roundId, claimAmount).send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
-      await addPendingShieldNoteToPXE(user, claimAmount, secret_hash, receipt.txHash)
     });
 
     it('reduces the public balance of the coin toss', async () => {
@@ -473,13 +471,8 @@ describe("E2E Coin Toss", () => {
     });
 
     it('user can then claim the pending shield with the secret', async () => {
-      const privateBalanceBefore = await token.methods.balance_of_private(user.getAddress()).view();
-      
-      await token.withWallet(user).methods.redeem_shield(user.getAddress(), claimAmount, secret).send().wait();
-
       const privateBalanceAfter = await token.methods.balance_of_private(user.getAddress()).view();
-
-      expect(privateBalanceAfter).toBe(privateBalanceBefore + claimAmount);
+      expect(privateBalanceAfter).toBe(userPrivateBalanceBefore + claimAmount);
     });
 
     it('nullifies the reveal note', async () => {
@@ -494,16 +487,21 @@ describe("E2E Coin Toss", () => {
     });
 
     it('reverts when trying to claim without a reveal note', async () => {
-      const secret_hash = await computeMessageSecretHash(secret);
-      const claimTx = coinToss.withWallet(user3).methods.claim(roundId, secret_hash).simulate();
+      const claimTx = coinToss.withWallet(user3).methods.claim(roundId, claimAmount).simulate();
       await expect(claimTx)
         .rejects
         .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Reveal note not found 'false'");
     });
 
+    it('reverts when a user tries to claim more than claimAmount', async () => {
+      const claimTx = coinToss.withWallet(user2).methods.claim(roundId, claimAmount + 1n).simulate();
+      await expect(claimTx)
+        .rejects
+        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Claim amount mismatch 'claim_amount == amount as u120'");
+    });
+
     it('allows all the winners to claim', async () => {
-      const secret_hash = await computeMessageSecretHash(secret);
-      const receipt = await coinToss.withWallet(user2).methods.claim(roundId, secret_hash).send().wait();
+      const receipt = await coinToss.withWallet(user2).methods.claim(roundId, claimAmount).send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
     });
   });
