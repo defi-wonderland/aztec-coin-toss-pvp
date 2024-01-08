@@ -4,3 +4,4 @@ mod token;
 mod oracle;
 mod round_data;
 mod reveal_note;
+mod gaffine;
