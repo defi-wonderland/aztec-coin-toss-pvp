@@ -103,6 +103,8 @@ contract CoinToss {
     /// @member token_address The address of the token used to bet
     /// @member results Saves the result of each round id
     /// @member rounds Saves the round data for each round id
+    /// @member number_of_tails The number of tails in the cumsum of the tails (encrypted)
+    /// @member divinity_bjj_public_key The divinity public key on baby jubjub curve (afffine)
     /// @member config The config note, containing the divinity address, the private oracle address, the token address and the bet amount
     /// @member bets The set of bet notes (ie active bets)
     /// @member reveals The set of reveal notes
@@ -194,6 +196,7 @@ contract CoinToss {
     /// @notice         Constructor for the contract, setting the config note
     /// @custom:privacy private
     /// @param          divinity The divinity address, invoked by the oracle
+    /// @param          divinity_bjj_public_key The divinity public key on baby jubjub curve (afffine)
     /// @param          private_oracle The private oracle contract address
     /// @param          token The token used to bet
     /// @param          bet_amount The bet amount
@@ -226,6 +229,9 @@ contract CoinToss {
         storage.token_address.write(token_address);
     }
 
+    /// @notice         Initializes the divinity public key used for decrypting the tail cumsum
+    /// @custom:privacy public
+    /// @param          serialized The serialized divinity public key
     #[aztec(public)]
     internal fn _init_bjj(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) {
         storage.divinity_bjj_public_key.write(AffinePoint::deserialize(serialized));
