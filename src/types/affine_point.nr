@@ -18,7 +18,7 @@ impl AffinePoint {
         [self.point.x, self.point.y]
     }
 
-    fn deserialize(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) -> Self {
+    pub fn deserialize(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) -> Self {
         Self {
             point: Point {
                 x: serialized[0],

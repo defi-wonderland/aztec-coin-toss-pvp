@@ -206,8 +206,8 @@ contract CoinToss {
         let selector = compute_selector("_initialize(Field,Field,(Field),(Field),(Field))");
         context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
 
-        let selector2 = compute_selector("_init_bjj(Field,Field)");
-        context.call_public_function(context.this_address(), selector2, [divinity_bjj_public_key.point.x, divinity_bjj_public_key.point.y]);
+        let selector2 = compute_selector("_init_bjj([Field;2])");
+        context.call_public_function(context.this_address(), selector2, divinity_bjj_public_key.serialize());
     }
 
     /// @notice         Initializes the contract
@@ -227,9 +227,8 @@ contract CoinToss {
     }
 
     #[aztec(public)]
-    internal fn _init_bjj(x: Field, y: Field) {
-        let AffinePoint = AffinePoint::new(Point::new(x, y));
-        storage.divinity_bjj_public_key.write(AffinePoint);
+    internal fn _init_bjj(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) {
+        storage.divinity_bjj_public_key.write(AffinePoint::deserialize(serialized));
     }
 
     /////////////////////////////////////////////////////////////////////
