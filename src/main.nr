@@ -10,7 +10,6 @@ contract CoinToss {
     //                             Imports                             //
     /////////////////////////////////////////////////////////////////////
 
-
     use crate::types::oracle::{
         DivinityAddressSubmitQuestionStruct, 
         FromSubmitQuestionStruct, 
@@ -37,7 +36,8 @@ contract CoinToss {
             TokenPublicContextInterface,
             FromShieldPrivateStruct,
             ToShieldPrivateStruct
-        }
+        },
+        affine_point::{AffinePoint, AffinePointSerializationMethods, AFFINE_POINT_SERIALIZED_LEN}
     };
 
     use dep::aztec::{
@@ -68,6 +68,13 @@ contract CoinToss {
     };
 
     use dep::std::option::Option;
+    use dep::noir_elgamal;
+
+    use dep::std;
+    use dep::std::ec::tecurve::affine::Curve as AffineCurve;
+    use dep::std::ec::tecurve::affine::Point;
+    use dep::std::collections::vec::Vec;
+
 
     /////////////////////////////////////////////////////////////////////
     //                             Storage                             //
@@ -84,6 +91,8 @@ contract CoinToss {
     global CONFIG_NOTE_SLOT = 9;
     global BETS_SLOT = 10;
     global REVEALS_SLOT = 11;
+    global NUMBER_OF_TAILS_SLOT = 12;
+    global DIVINITY_PUBLIC_KEY_SLOT = 13;
 
     /// @notice The storage of the contract
     /// @member round_id The id of the current round
@@ -94,6 +103,8 @@ contract CoinToss {
     /// @member token_address The address of the token used to bet
     /// @member results Saves the result of each round id
     /// @member rounds Saves the round data for each round id
+    /// @member number_of_tails The number of tails in the cumsum of the tails (encrypted)
+    /// @member divinity_bjj_public_key The divinity public key on baby jubjub curve (afffine)
     /// @member config The config note, containing the divinity address, the private oracle address, the token address and the bet amount
     /// @member bets The set of bet notes (ie active bets)
     /// @member reveals The set of reveal notes
@@ -107,12 +118,14 @@ contract CoinToss {
         token_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
         results: Map<PublicState<bool, BOOL_SERIALIZED_LEN>>,
         rounds: Map<PublicState<RoundData, ROUND_DATA_SERIALIZED_LEN>>,
+        number_of_tails: Map<PublicState<AffinePoint, AFFINE_POINT_SERIALIZED_LEN>>,
+        divinity_bjj_public_key: PublicState<AffinePoint, AFFINE_POINT_SERIALIZED_LEN>,
 
         ///////////////////////////// private //////////////////////////
         config: ImmutableSingleton<ConfigNote, CONFIG_NOTE_LEN>,
         bets: Set<BetNote, BET_NOTE_LEN>,
         reveals: Set<RevealNote, REVEAL_NOTE_LEN>,
-    }
+    } 
 
     impl Storage {
         fn init(context: Context) -> Self {
@@ -124,7 +137,7 @@ contract CoinToss {
                 oracle_address: PublicState::new(context, ORACLE_ADDRESS_SLOT, AztecAddressSerializationMethods),
                 divinity_address: PublicState::new(context, DIVINITY_ADDRESS_SLOT, AztecAddressSerializationMethods),
                 token_address: PublicState::new(context, TOKEN_ADDRESS_SLOT, AztecAddressSerializationMethods),
-                results: Map::new(
+                results: Map::new( 
                     context,
                     RESULTS_SLOT,
                     |context, slot| {
@@ -135,7 +148,7 @@ contract CoinToss {
                         )
                     },
                 ),
-                 rounds: Map::new(
+                rounds: Map::new(
                     context,
                     ROUND_DATA_SLOT,
                     |context, slot| {
@@ -146,7 +159,22 @@ contract CoinToss {
                         )
                     },
                 ),
-
+                number_of_tails: Map::new(
+                    context,
+                    NUMBER_OF_TAILS_SLOT,
+                    |context, slot| {
+                        PublicState::new(
+                            context,
+                            slot,
+                            AffinePointSerializationMethods
+                        )
+                    },
+                ),
+                divinity_bjj_public_key: PublicState::new( 
+                    context,
+                    DIVINITY_PUBLIC_KEY_SLOT,
+                    AffinePointSerializationMethods,
+                ),
                 ////////////////////////////// private //////////////////////////
                 config: ImmutableSingleton::new(
                     context,
@@ -166,17 +194,47 @@ contract CoinToss {
     /// @notice         Constructor for the contract, setting the config note
     /// @custom:privacy private
     /// @param          divinity The divinity address, invoked by the oracle
+    /// @param          divinity_bjj_public_key The divinity public key on baby jubjub curve (afffine)
     /// @param          private_oracle The private oracle contract address
     /// @param          token The token used to bet
     /// @param          bet_amount The bet amount
     /// @param          phase_length The phase length
     #[aztec(private)]
-    fn constructor(divinity: AztecAddress, private_oracle: AztecAddress, token: AztecAddress, bet_amount: Field, phase_length: Field) {
-        let mut config_note = ConfigNote::new(divinity, private_oracle, token, bet_amount);
+    fn constructor(divinity: AztecAddress, divinity_bjj_public_key: AffinePoint, private_oracle: AztecAddress, token: AztecAddress, bet_amount: Field, phase_length: Field) {
+        let mut config_note = ConfigNote::new(divinity, divinity_bjj_public_key, private_oracle, token, bet_amount);
         storage.config.initialize(&mut config_note, Option::none(), false);
 
         let selector = compute_selector("_initialize(Field,Field,(Field),(Field),(Field))");
         context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
+
+        // insure function selector remains correct in later dev stage
+        assert(AFFINE_POINT_SERIALIZED_LEN == 2);
+        let selector2 = compute_selector("_init_bjj([Field;2])");
+        context.call_public_function(context.this_address(), selector2, divinity_bjj_public_key.serialize());
+    }
+
+    /// @notice         Initializes the contract
+    /// @custom:privacy public
+    /// @param          phase_length The length of each phase
+    /// @param          bet_amount The amount of each bet
+    /// @param          oracle_address The address of the private oracle
+    /// @param          divinity_address The address of the divinity contract
+    /// @param          token_address The address of the token used to bet
+    #[aztec(public)]
+    internal fn _initialize(phase_length: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
+        storage.phase_length.write(phase_length);
+        storage.bet_amount.write(bet_amount);
+        storage.oracle_address.write(oracle_address);
+        storage.divinity_address.write(divinity_address);
+        storage.token_address.write(token_address);
+    }
+
+    /// @notice         Initializes the divinity public key used for decrypting the tail cumsum
+    /// @custom:privacy public
+    /// @param          serialized The serialized divinity public key (on baby jubjub curve)
+    #[aztec(public)]
+    internal fn _init_bjj(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) {
+        storage.divinity_bjj_public_key.write(AffinePoint::deserialize(serialized));
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -229,22 +287,6 @@ contract CoinToss {
     /////////////////////////////////////////////////////////////////////
     //                   Public internal functions                    //
     /////////////////////////////////////////////////////////////////////
-
-    /// @notice         Initializes the contract
-    /// @custom:privacy public
-    /// @param          phase_length The length of each phase
-    /// @param          bet_amount The amount of each bet
-    /// @param          oracle_address The address of the private oracle
-    /// @param          divinity_address The address of the divinity contract
-    /// @param          token_address The address of the token used to bet
-    #[aztec(public)]
-    internal fn _initialize(phase_length: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
-        storage.phase_length.write(phase_length);
-        storage.bet_amount.write(bet_amount);
-        storage.oracle_address.write(oracle_address);
-        storage.divinity_address.write(divinity_address);
-        storage.token_address.write(token_address);
-    }
 
     /// @notice         Ends the bet phase
     /// @custom:privacy public
@@ -383,6 +425,23 @@ contract CoinToss {
 
         let selector = compute_selector("_increase_bettors(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
+
+
+//TODO: in another private fn (needs call_private_function tho -> gates count?)
+        let divinity_bjj_key = config_note.divinity_bjj_public_key;
+
+        let (encrypted_bet_c1, encrypted_bet_c2) = noir_elgamal::exp_elgamal_encrypt(divinity_bjj_key.point, bet as u40, bet_randomness);
+
+        let mut container = [0; 7];
+        container[0] = round_id;
+        container[1] = encrypted_bet_c1.x;
+        container[2] = encrypted_bet_c1.y;
+        container[3] = encrypted_bet_c2.x;
+        container[4] = encrypted_bet_c2.y;
+        container[5] = divinity_bjj_key.point.x;
+        container[6] = divinity_bjj_key.point.y;
+        let selector = compute_selector("_update_bet_stats(Field,[Field;2],[Field;2],[Field;2])");
+        context.call_public_function(context.this_address(), selector, container);
     }
 
     /// @notice         Calls the oracle to get the result of the bet round
@@ -487,6 +546,8 @@ contract CoinToss {
             assert(false, "Reveal note not found");
         }
     }
+
+
 
     /////////////////////////////////////////////////////////////////////
     //             Public unconstrained external functions             //
