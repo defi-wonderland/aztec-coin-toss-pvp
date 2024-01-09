@@ -37,7 +37,7 @@ contract CoinToss {
             FromShieldPrivateStruct,
             ToShieldPrivateStruct
         },
-        gaffine::{GaffineSerializationMethods, GAFFINE_SERIALIZED_LEN}
+        affine_point::{AffinePoint, AffinePointSerializationMethods, AFFINE_POINT_SERIALIZED_LEN}
     };
 
     use dep::aztec::{
@@ -72,7 +72,7 @@ contract CoinToss {
 
     use dep::std;
     use dep::std::ec::tecurve::affine::Curve as AffineCurve;
-    use dep::std::ec::tecurve::affine::Point as Gaffine;
+    use dep::std::ec::tecurve::affine::Point;
     use dep::std::collections::vec::Vec;
 
 
@@ -117,15 +117,15 @@ contract CoinToss {
         results: Map<PublicState<bool, BOOL_SERIALIZED_LEN>>,
         rounds: Map<PublicState<RoundData, ROUND_DATA_SERIALIZED_LEN>>,
 
-        number_of_tails: Map<PublicState<Gaffine, GAFFINE_SERIALIZED_LEN>>,
-        divinity_bjj_public_key: PublicState<Field, FIELD_SERIALIZED_LEN>,
+        number_of_tails: Map<PublicState<AffinePoint, AFFINE_POINT_SERIALIZED_LEN>>,
+        divinity_bjj_public_key: PublicState<AffinePoint, AFFINE_POINT_SERIALIZED_LEN>,
 
         ///////////////////////////// private //////////////////////////
         config: ImmutableSingleton<ConfigNote, CONFIG_NOTE_LEN>,
         bets: Set<BetNote, BET_NOTE_LEN>,
         reveals: Set<RevealNote, REVEAL_NOTE_LEN>,
 
-    }
+    } 
 
     impl Storage {
         fn init(context: Context) -> Self {
@@ -137,7 +137,7 @@ contract CoinToss {
                 oracle_address: PublicState::new(context, ORACLE_ADDRESS_SLOT, AztecAddressSerializationMethods),
                 divinity_address: PublicState::new(context, DIVINITY_ADDRESS_SLOT, AztecAddressSerializationMethods),
                 token_address: PublicState::new(context, TOKEN_ADDRESS_SLOT, AztecAddressSerializationMethods),
-                results: Map::new(
+                results: Map::new( 
                     context,
                     RESULTS_SLOT,
                     |context, slot| {
@@ -148,7 +148,7 @@ contract CoinToss {
                         )
                     },
                 ),
-                 rounds: Map::new(
+                rounds: Map::new(
                     context,
                     ROUND_DATA_SLOT,
                     |context, slot| {
@@ -159,23 +159,22 @@ contract CoinToss {
                         )
                     },
                 ),
-
-            number_of_tails: Map::new(
-                context,
-                NUMBER_OF_TAILS_SLOT,
-                |context, slot| {
-                    PublicState::new(
-                        context,
-                        slot,
-                        GaffineSerializationMethods
-                    )
-                },
-            ),
-            divinity_bjj_public_key: PublicState::new( 
-                context,
-                DIVINITY_PUBLIC_KEY_SLOT,
-                FieldSerializationMethods,
-            ),
+                number_of_tails: Map::new(
+                    context,
+                    NUMBER_OF_TAILS_SLOT,
+                    |context, slot| {
+                        PublicState::new(
+                            context,
+                            slot,
+                            AffinePointSerializationMethods
+                        )
+                    },
+                ),
+                divinity_bjj_public_key: PublicState::new( 
+                    context,
+                    DIVINITY_PUBLIC_KEY_SLOT,
+                    AffinePointSerializationMethods,
+                ),
                 ////////////////////////////// private //////////////////////////
                 config: ImmutableSingleton::new(
                     context,
@@ -200,12 +199,15 @@ contract CoinToss {
     /// @param          bet_amount The bet amount
     /// @param          phase_length The phase length
     #[aztec(private)]
-    fn constructor(divinity: AztecAddress, divinity_bjj_public_key: Field, private_oracle: AztecAddress, token: AztecAddress, bet_amount: Field, phase_length: Field) {
+    fn constructor(divinity: AztecAddress, divinity_bjj_public_key: AffinePoint, private_oracle: AztecAddress, token: AztecAddress, bet_amount: Field, phase_length: Field) {
         let mut config_note = ConfigNote::new(divinity, private_oracle, token, bet_amount);
         storage.config.initialize(&mut config_note, Option::none(), false);
 
         let selector = compute_selector("_initialize(Field,Field,(Field),(Field),(Field))");
-        context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, divinity_bjj_public_key, token.address]);
+        context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
+
+        let selector2 = compute_selector("_init_bjj(Field,Field)");
+        context.call_public_function(context.this_address(), selector2, [divinity_bjj_public_key.point.x, divinity_bjj_public_key.point.y]);
     }
 
     /// @notice         Initializes the contract
@@ -216,15 +218,19 @@ contract CoinToss {
     /// @param          divinity_address The address of the divinity contract
     /// @param          token_address The address of the token used to bet
     #[aztec(public)]
-    internal fn _initialize(phase_length: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, divinity_bjj_public_key: Field, token_address: AztecAddress) {
+    internal fn _initialize(phase_length: Field, bet_amount: Field, oracle_address: AztecAddress, divinity_address: AztecAddress, token_address: AztecAddress) {
         storage.phase_length.write(phase_length);
         storage.bet_amount.write(bet_amount);
         storage.oracle_address.write(oracle_address);
         storage.divinity_address.write(divinity_address);
         storage.token_address.write(token_address);
-        storage.divinity_bjj_public_key.write(divinity_bjj_public_key);
     }
 
+    #[aztec(public)]
+    internal fn _init_bjj(x: Field, y: Field) {
+        let AffinePoint = AffinePoint::new(Point::new(x, y));
+        storage.divinity_bjj_public_key.write(AffinePoint);
+    }
 
     /////////////////////////////////////////////////////////////////////
     //                   Public external functions                    //

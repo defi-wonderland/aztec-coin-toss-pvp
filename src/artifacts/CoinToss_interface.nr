@@ -4,17 +4,6 @@ use dep::std;
 use dep::aztec::context::{ PrivateContext, PublicContext };
 use dep::protocol_types::constants::RETURN_VALUES_LENGTH;
 
-struct OracleAddressInitializeStruct {
-  address: Field,
-}
-
-struct DivinityAddressInitializeStruct {
-  address: Field,
-}
-
-struct TokenAddressInitializeStruct {
-  address: Field,
-}
 
 
 // Interface for calling CoinToss functions from a private context
@@ -68,26 +57,6 @@ impl CoinTossPrivateContextInterface {
     let mut serialized_args = [0; 0];
 
     context.call_public_function(self.address, 0x0b2d8f06, serialized_args)
-  }
-  
-
-  pub fn initialize(
-    self,
-    context: &mut PrivateContext,
-    phase_length: Field,
-    bet_amount: Field,
-    oracle_address: OracleAddressInitializeStruct,
-    divinity_address: DivinityAddressInitializeStruct,
-    token_address: TokenAddressInitializeStruct
-  ) {
-    let mut serialized_args = [0; 5];
-    serialized_args[0] = phase_length;
-    serialized_args[1] = bet_amount;
-    serialized_args[2] = oracle_address.address;
-    serialized_args[3] = divinity_address.address;
-    serialized_args[4] = token_address.address;
-
-    context.call_public_function(self.address, 0x7cf3141c, serialized_args)
   }
   
 
@@ -170,26 +139,6 @@ impl CoinTossPublicContextInterface {
     let mut serialized_args = [0; 0];
 
     context.call_public_function(self.address, 0x0b2d8f06, serialized_args)
-  }
-  
-
-  pub fn initialize(
-    self,
-    context: PublicContext,
-    phase_length: Field,
-    bet_amount: Field,
-    oracle_address: OracleAddressInitializeStruct,
-    divinity_address: DivinityAddressInitializeStruct,
-    token_address: TokenAddressInitializeStruct
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 5];
-    serialized_args[0] = phase_length;
-    serialized_args[1] = bet_amount;
-    serialized_args[2] = oracle_address.address;
-    serialized_args[3] = divinity_address.address;
-    serialized_args[4] = token_address.address;
-
-    context.call_public_function(self.address, 0x7cf3141c, serialized_args)
   }
   
 
