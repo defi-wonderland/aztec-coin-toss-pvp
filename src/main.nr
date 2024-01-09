@@ -118,7 +118,6 @@ contract CoinToss {
         token_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
         results: Map<PublicState<bool, BOOL_SERIALIZED_LEN>>,
         rounds: Map<PublicState<RoundData, ROUND_DATA_SERIALIZED_LEN>>,
-
         number_of_tails: Map<PublicState<AffinePoint, AFFINE_POINT_SERIALIZED_LEN>>,
         divinity_bjj_public_key: PublicState<AffinePoint, AFFINE_POINT_SERIALIZED_LEN>,
 
@@ -126,7 +125,6 @@ contract CoinToss {
         config: ImmutableSingleton<ConfigNote, CONFIG_NOTE_LEN>,
         bets: Set<BetNote, BET_NOTE_LEN>,
         reveals: Set<RevealNote, REVEAL_NOTE_LEN>,
-
     } 
 
     impl Storage {
@@ -203,12 +201,14 @@ contract CoinToss {
     /// @param          phase_length The phase length
     #[aztec(private)]
     fn constructor(divinity: AztecAddress, divinity_bjj_public_key: AffinePoint, private_oracle: AztecAddress, token: AztecAddress, bet_amount: Field, phase_length: Field) {
-        let mut config_note = ConfigNote::new(divinity, private_oracle, token, bet_amount);
+        let mut config_note = ConfigNote::new(divinity, divinity_bjj_public_key, private_oracle, token, bet_amount);
         storage.config.initialize(&mut config_note, Option::none(), false);
 
         let selector = compute_selector("_initialize(Field,Field,(Field),(Field),(Field))");
         context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
 
+        // insure function selector remains correct in later dev stage
+        assert(AFFINE_POINT_SERIALIZED_LEN == 2);
         let selector2 = compute_selector("_init_bjj([Field;2])");
         context.call_public_function(context.this_address(), selector2, divinity_bjj_public_key.serialize());
     }
@@ -231,7 +231,7 @@ contract CoinToss {
 
     /// @notice         Initializes the divinity public key used for decrypting the tail cumsum
     /// @custom:privacy public
-    /// @param          serialized The serialized divinity public key
+    /// @param          serialized The serialized divinity public key (on baby jubjub curve)
     #[aztec(public)]
     internal fn _init_bjj(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) {
         storage.divinity_bjj_public_key.write(AffinePoint::deserialize(serialized));
@@ -425,6 +425,23 @@ contract CoinToss {
 
         let selector = compute_selector("_increase_bettors(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
+
+
+//TODO: in another private fn (needs call_private_function tho -> gates count?)
+        let divinity_bjj_key = config_note.divinity_bjj_public_key;
+
+        let (encrypted_bet_c1, encrypted_bet_c2) = noir_elgamal::exp_elgamal_encrypt(divinity_bjj_key.point, bet as u40, bet_randomness);
+
+        let mut container = [0; 7];
+        container[0] = round_id;
+        container[1] = encrypted_bet_c1.x;
+        container[2] = encrypted_bet_c1.y;
+        container[3] = encrypted_bet_c2.x;
+        container[4] = encrypted_bet_c2.y;
+        container[5] = divinity_bjj_key.point.x;
+        container[6] = divinity_bjj_key.point.y;
+        let selector = compute_selector("_update_bet_stats(Field,[Field;2],[Field;2],[Field;2])");
+        context.call_public_function(context.this_address(), selector, container);
     }
 
     /// @notice         Calls the oracle to get the result of the bet round
@@ -529,6 +546,8 @@ contract CoinToss {
             assert(false, "Reveal note not found");
         }
     }
+
+
 
     /////////////////////////////////////////////////////////////////////
     //             Public unconstrained external functions             //
