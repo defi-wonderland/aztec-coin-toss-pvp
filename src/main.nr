@@ -37,7 +37,8 @@ contract CoinToss {
             FromShieldPrivateStruct,
             ToShieldPrivateStruct
         },
-        affine_point::{AffinePoint, AffinePointSerializationMethods, AFFINE_POINT_SERIALIZED_LEN}
+        affine_point::{AffinePoint, AffinePointSerializationMethods, AFFINE_POINT_SERIALIZED_LEN},
+        elgamal_affine_points::{ElgamalAffinePoints, ElgamalAffinePointsSerializationMethods, ELGAMAL_AFFINE_POINTS_SERIALIZED_LEN},
     };
 
     use dep::aztec::{
@@ -118,7 +119,7 @@ contract CoinToss {
         token_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
         results: Map<PublicState<bool, BOOL_SERIALIZED_LEN>>,
         rounds: Map<PublicState<RoundData, ROUND_DATA_SERIALIZED_LEN>>,
-        number_of_tails: Map<PublicState<AffinePoint, AFFINE_POINT_SERIALIZED_LEN>>,
+        number_of_tails: Map<PublicState<ElgamalAffinePoints, ELGAMAL_AFFINE_POINTS_SERIALIZED_LEN>>,
         divinity_bjj_public_key: PublicState<AffinePoint, AFFINE_POINT_SERIALIZED_LEN>,
 
         ///////////////////////////// private //////////////////////////
@@ -166,7 +167,7 @@ contract CoinToss {
                         PublicState::new(
                             context,
                             slot,
-                            AffinePointSerializationMethods
+                            ElgamalAffinePointsSerializationMethods
                         )
                     },
                 ),
@@ -289,7 +290,7 @@ contract CoinToss {
     /////////////////////////////////////////////////////////////////////
 
     /// @notice         Ends the bet phase
-    /// @custom:privacy public
+    /// @custom:privacy public internal
     /// @param          round_id The id of the current round
     #[aztec(public)]
     internal fn _end_bet_phase(round_id: Field) {
@@ -312,7 +313,7 @@ contract CoinToss {
     }
 
     /// @notice         Increases the number of bettors
-    /// @custom:privacy public
+    /// @custom:privacy public internal
     /// @param          round_id The id of the current round
     #[aztec(public)]
     internal fn _increase_bettors(round_id: Field) {
@@ -330,7 +331,7 @@ contract CoinToss {
     }
 
     /// @notice         Sets the result of the bet round
-    /// @custom:privacy public
+    /// @custom:privacy public internal
     /// @param          caller The caller of the function (the oracle)
     /// @param          round_id The id of the current round
     #[aztec(public)]
@@ -358,7 +359,7 @@ contract CoinToss {
     }
 
     /// @notice         Increases the number of reveals
-    /// @custom:privacy public
+    /// @custom:privacy public internal
     /// @param          round_id The id of the current round
     /// @param          user_bet The bet of the user
     #[aztec(public)]
@@ -381,7 +382,7 @@ contract CoinToss {
     }
 
     /// @notice         Shields the winnings back to the user
-    /// @custom:privacy public
+    /// @custom:privacy public internal
     /// @param          round_id The id of the current round
     /// @param          amount The amount to claim for winning the round
     #[aztec(public)]
@@ -389,6 +390,25 @@ contract CoinToss {
         let round_data = storage.rounds.at(round_id).read();
         let claim_amount = round_data.claim_amount;
         assert(claim_amount == amount as u120, "Claim amount mismatch");
+    }
+
+    /// @notice         Updates the encrypted cumulative sum of tails
+    /// @custom:privacy public internal
+    /// @param          round_id The id of the current round
+    /// @param          encrypted_bet_C1_field The encrypted bet C1 point
+    /// @param          encrypted_bet_C2_field The encrypted bet C2 point
+    #[aztec(public)]
+    internal fn _update_cumsum(round_id: Field, encrypted_bet_C1_field: [Field;2], encrypted_bet_C2_field: [Field;2]) {
+        let encrypted_tails_to_add = ElgamalAffinePoints::new(
+            AffinePoint::deserialize(encrypted_bet_C1_field),
+            AffinePoint::deserialize(encrypted_bet_C2_field)
+        );
+
+        let current_tails_encrypted_count = storage.number_of_tails.at(round_id).read();
+ 
+        let new_tails_encrypted_count = current_tails_encrypted_count.add(encrypted_tails_to_add);
+
+        storage.number_of_tails.at(round_id).write(new_tails_encrypted_count);
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -423,25 +443,24 @@ contract CoinToss {
         let mut user_bet: BetNote = BetNote::new(&mut context, bettor, round_id, bet, bet_randomness);
         storage.bets.insert(&mut user_bet, true);
 
-        let selector = compute_selector("_increase_bettors(Field)");
-        context.call_public_function(context.this_address(), selector, [round_id]);
+        let selector_increase_bettors = compute_selector("_increase_bettors(Field)");
+        context.call_public_function(context.this_address(), selector_increase_bettors, [round_id]);
 
-
-//TODO: in another private fn (needs call_private_function tho -> gates count?)
+//TODO: in another private fn for gorgeous-er code? (needs call_private_function tho -> gates count?)
         let divinity_bjj_key = config_note.divinity_bjj_public_key;
 
         let (encrypted_bet_c1, encrypted_bet_c2) = noir_elgamal::exp_elgamal_encrypt(divinity_bjj_key.point, bet as u40, bet_randomness);
 
-        let mut container = [0; 7];
-        container[0] = round_id;
-        container[1] = encrypted_bet_c1.x;
-        container[2] = encrypted_bet_c1.y;
-        container[3] = encrypted_bet_c2.x;
-        container[4] = encrypted_bet_c2.y;
-        container[5] = divinity_bjj_key.point.x;
-        container[6] = divinity_bjj_key.point.y;
-        let selector = compute_selector("_update_bet_stats(Field,[Field;2],[Field;2],[Field;2])");
-        context.call_public_function(context.this_address(), selector, container);
+        let serialized_calldata = [
+            round_id,
+            encrypted_bet_c1.x,
+            encrypted_bet_c1.y,
+            encrypted_bet_c2.x,
+            encrypted_bet_c2.y
+        ];
+
+        let selector_update_bet_stats = compute_selector("_update_cumsum(Field,[Field;2],[Field;2])");
+        context.call_public_function(context.this_address(), selector_update_bet_stats, serialized_calldata);
     }
 
     /// @notice         Calls the oracle to get the result of the bet round
