@@ -53,16 +53,6 @@ impl PrivateOraclePrivateContextInterface {
   }
   
 
-  pub fn get_fee(
-    self,
-    context: &mut PrivateContext
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 0];
-
-    context.call_private_function(self.address, 0x64af47cf, serialized_args)
-  }
-  
-
   pub fn initialize_payment_token(
     self,
     context: &mut PrivateContext,
@@ -82,14 +72,16 @@ impl PrivateOraclePrivateContextInterface {
     context: &mut PrivateContext,
     question: Field,
     requester: RequesterSubmitAnswerStruct,
-    answer: Field
+    answer: [Field;3]
   ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 3];
+    let mut serialized_args = [0; 5];
     serialized_args[0] = question;
     serialized_args[1] = requester.address;
-    serialized_args[2] = answer;
+    serialized_args[2] = answer[0];
+    serialized_args[3] = answer[1];
+    serialized_args[4] = answer[2];
 
-    context.call_private_function(self.address, 0xdc92d6e8, serialized_args)
+    context.call_private_function(self.address, 0xe9e92c15, serialized_args)
   }
   
 

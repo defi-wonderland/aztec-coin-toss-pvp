@@ -97,9 +97,6 @@ export class PrivateOracleContract extends ContractBase {
     /** get_fee() */
     get_fee: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** get_fee_unconstrained() */
-    get_fee_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
     /** get_payment_token() */
     get_payment_token: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -112,8 +109,8 @@ export class PrivateOracleContract extends ContractBase {
     /** initialize_payment_token(payment_token: field, fee: field) */
     initialize_payment_token: ((payment_token: FieldLike, fee: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** submit_answer(question: field, requester: struct, answer: field) */
-    submit_answer: ((question: FieldLike, requester: AztecAddressLike, answer: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+    /** submit_answer(question: field, requester: struct, answer: array) */
+    submit_answer: ((question: FieldLike, requester: AztecAddressLike, answer: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** submit_question(from: struct, question: field, divinity_address: struct, nonce: field, callback: array) */
     submit_question: ((from: AztecAddressLike, question: FieldLike, divinity_address: AztecAddressLike, nonce: FieldLike, callback: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;

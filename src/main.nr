@@ -494,14 +494,16 @@ contract CoinToss {
 
     /// @notice         Called by the oracle to set the result of the bet round
     /// @param          answer The answer of the oracle
+    ///                 answer[0] The randomness
+    ///                 answer[1:2] unused
     /// @param          data The data of the oracle 
     ///                 data[0]: round_id
-    ///                 data[1:5]: unused
+    ///                 data[1:4]: unused
     #[aztec(private)]
-    fn oracle_callback(answer: Field, data: [Field; 5]) {
+    fn oracle_callback(answer: [Field; 3], data: [Field; 5]) {
         let round_id = data[0];
         let selector = compute_selector("_set_result(Field,Field,Field)");
-        context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, answer]);
+        context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, answer[0]]);
     }
 
     /// @notice         Called by the user to reveal that they won

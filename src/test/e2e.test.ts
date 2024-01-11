@@ -321,7 +321,7 @@ describe("E2E Coin Toss", () => {
       currentTime = await cc.eth.timestamp() + 1;
       await cc.aztec.warp(currentTime);
 
-      const receipt = await oracle.withWallet(divinity).methods.submit_answer(roundId, deployer.getAddress(), answer).send().wait();
+      const receipt = await oracle.withWallet(divinity).methods.submit_answer(roundId, deployer.getAddress(), [answer, 0n, 0n]).send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
     });
 
@@ -338,7 +338,7 @@ describe("E2E Coin Toss", () => {
     });
 
     it('reverts when called by someone else', async () => {
-      const callbackTx = coinToss.withWallet(user).methods.oracle_callback(0n, [0n,0n,0n,0n,0n]).simulate();
+      const callbackTx = coinToss.withWallet(user).methods.oracle_callback([0n, 0n, 0n], [0n,0n,0n,0n,0n]).simulate();
       await expect(callbackTx)
         .rejects
         .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Caller is not the oracle 'caller == oracle.address'");
