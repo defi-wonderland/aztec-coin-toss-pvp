@@ -15,6 +15,8 @@ import {
   TxHash,
   TxStatus,
   waitForSandbox,
+  getUnsafeSchnorrAccount,
+  Fq
 } from "@aztec/aztec.js";
 
 import { initAztecJs } from "@aztec/aztec.js/init";
@@ -23,7 +25,6 @@ import { BetNote, RevealNote } from "./Notes.js";
 import { CoinTossContract } from "../artifacts/CoinToss.js";
 import { TokenContract } from "../artifacts/token/Token.js";
 import { PrivateOracleContract } from "../artifacts/oracle/PrivateOracle.js";
-import { BabyJub, buildBabyjub } from "circomlibjs";
 
 // Constants
 const CONFIG_SLOT: Fr = new Fr(9);
@@ -39,6 +40,14 @@ const BET_AMOUNT = 1337n;
 
 const PHASE_LENGTH = 10 * 60; // 10 minutes
 
+// Babyjubjub divinity data
+const divinityPrivateKey = 2360067582289791756090345803415031600606727745697750731963540090262281758098n;
+
+const DIVINITY_BJJ_X = 17330617431291011652840919965771789495411317073490913928764661286424537084069n
+const DIVINITY_BJJ_Y = 12743939760321333065626220799160222400501486578575623324257991029865760346009n
+
+const DIVINITY_BJJ = { point: { x: DIVINITY_BJJ_X, y: DIVINITY_BJJ_Y } };
+
 // Global variables
 let pxe: PXE;
 let cc: CheatCodes;
@@ -51,8 +60,6 @@ let user2: AccountWalletWithPrivateKey;
 let user3: AccountWalletWithPrivateKey;
 let divinity: AccountWalletWithPrivateKey;
 let deployer: AccountWalletWithPrivateKey;
-
-let bjj: BabyJub;
 
 // Setup: Set the sandbox up and get the accounts
 beforeAll(async () => {
@@ -67,7 +74,8 @@ beforeAll(async () => {
     createAccount(pxe),
   ]);
   await initAztecJs();
-  bjj = await buildBabyjub();
+
+  divinity = await getUnsafeSchnorrAccount(pxe, new Fq(divinityPrivateKey)).waitDeploy()
 }, 120_000);
 
 describe("E2E Coin Toss", () => {
@@ -101,23 +109,11 @@ describe("E2E Coin Toss", () => {
       )
     );
 
-    // const divinityPublicKey = await privateToPublicKey(divinity.getEncryptionPrivateKey().toBigInt())
-    const divinityPublicKey = divinity.getCompleteAddress().publicKey;
-    const point = { point: { x: divinityPublicKey.x, y: divinityPublicKey.y } };
-    // getPubKey
-
-    // const publicKeyPoint = bjj.mulPointEscalar(bjj.Base8, divinity.getEncryptionPrivateKey().toBigInt());
-    // const point2 = 
-    // {
-    //   x:bjj.F.toObject(publicKeyPoint[0]),
-    //   y:bjj.F.toObject(publicKeyPoint[1])
-    // }
-
     // Deploy Coin Toss
     const coinTossReceipt = await CoinTossContract.deploy(
       deployer,
       divinity.getAddress(),
-      point,
+      DIVINITY_BJJ,
       oracle.address,
       token.address,
       BET_AMOUNT,
@@ -578,21 +574,13 @@ const addConfigNotesToPxe = async (
   const privateOracleAsFr = oracle.address.toField();
   const tokenAsFr = token.address.toField();
   const betAmountAsFr = new Fr(BET_AMOUNT);
-  const divinityPublicKeyPoint = divinity.getCompleteAddress().publicKey;
-
-    //   const publicKeyPoint = bjj.mulPointEscalar(bjj.Base8, divinity.getEncryptionPrivateKey().toBigInt());
-    // const point2 = 
-    // {
-    //   x:bjj.F.toObject(publicKeyPoint[0]),
-    //   y:bjj.F.toObject(publicKeyPoint[1])
-    // }
 
   await pxe.addNote(
     new ExtendedNote(
       new Note([
         divinityAsFr,
-        divinityPublicKeyPoint.x,
-        divinityPublicKeyPoint.y,
+        new Fr(DIVINITY_BJJ.point.x),
+        new Fr(DIVINITY_BJJ.point.y),
         privateOracleAsFr,
         tokenAsFr,
         betAmountAsFr,
