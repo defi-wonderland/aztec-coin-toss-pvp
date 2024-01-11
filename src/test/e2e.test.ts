@@ -1,7 +1,6 @@
 import {
   AccountWalletWithPrivateKey,
   AztecAddress,
-  BatchCall,
   CheatCodes,
   computeAuthWitMessageHash,
   computeMessageSecretHash,
@@ -24,6 +23,7 @@ import { BetNote, RevealNote } from "./Notes.js";
 import { CoinTossContract } from "../artifacts/CoinToss.js";
 import { TokenContract } from "../artifacts/token/Token.js";
 import { PrivateOracleContract } from "../artifacts/oracle/PrivateOracle.js";
+import { BabyJub, buildBabyjub } from "circomlibjs";
 
 // Constants
 const CONFIG_SLOT: Fr = new Fr(9);
@@ -52,6 +52,8 @@ let user3: AccountWalletWithPrivateKey;
 let divinity: AccountWalletWithPrivateKey;
 let deployer: AccountWalletWithPrivateKey;
 
+let bjj: BabyJub;
+
 // Setup: Set the sandbox up and get the accounts
 beforeAll(async () => {
   const { PXE_URL = "http://localhost:8080", SANDBOX_URL = "http://localhost:8545" } = process.env;
@@ -65,6 +67,7 @@ beforeAll(async () => {
     createAccount(pxe),
   ]);
   await initAztecJs();
+  bjj = await buildBabyjub();
 }, 120_000);
 
 describe("E2E Coin Toss", () => {
@@ -98,10 +101,23 @@ describe("E2E Coin Toss", () => {
       )
     );
 
+    // const divinityPublicKey = await privateToPublicKey(divinity.getEncryptionPrivateKey().toBigInt())
+    const divinityPublicKey = divinity.getCompleteAddress().publicKey;
+    const point = { point: { x: divinityPublicKey.x, y: divinityPublicKey.y } };
+    // getPubKey
+
+    // const publicKeyPoint = bjj.mulPointEscalar(bjj.Base8, divinity.getEncryptionPrivateKey().toBigInt());
+    // const point2 = 
+    // {
+    //   x:bjj.F.toObject(publicKeyPoint[0]),
+    //   y:bjj.F.toObject(publicKeyPoint[1])
+    // }
+
     // Deploy Coin Toss
     const coinTossReceipt = await CoinTossContract.deploy(
       deployer,
       divinity.getAddress(),
+      point,
       oracle.address,
       token.address,
       BET_AMOUNT,
@@ -562,11 +578,21 @@ const addConfigNotesToPxe = async (
   const privateOracleAsFr = oracle.address.toField();
   const tokenAsFr = token.address.toField();
   const betAmountAsFr = new Fr(BET_AMOUNT);
+  const divinityPublicKeyPoint = divinity.getCompleteAddress().publicKey;
+
+    //   const publicKeyPoint = bjj.mulPointEscalar(bjj.Base8, divinity.getEncryptionPrivateKey().toBigInt());
+    // const point2 = 
+    // {
+    //   x:bjj.F.toObject(publicKeyPoint[0]),
+    //   y:bjj.F.toObject(publicKeyPoint[1])
+    // }
 
   await pxe.addNote(
     new ExtendedNote(
       new Note([
         divinityAsFr,
+        divinityPublicKeyPoint.x,
+        divinityPublicKeyPoint.y,
         privateOracleAsFr,
         tokenAsFr,
         betAmountAsFr,
