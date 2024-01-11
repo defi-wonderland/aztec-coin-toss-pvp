@@ -55,14 +55,14 @@ export class CoinTossContract extends ContractBase {
   /**
    * Creates a tx to deploy a new instance of this contract.
    */
-  public static deploy(wallet: Wallet, divinity: AztecAddressLike, private_oracle: AztecAddressLike, token: AztecAddressLike, bet_amount: FieldLike, phase_length: FieldLike) {
+  public static deploy(wallet: Wallet, divinity: AztecAddressLike, divinity_bjj_public_key: { point: { x: FieldLike, y: FieldLike } }, private_oracle: AztecAddressLike, token: AztecAddressLike, bet_amount: FieldLike, phase_length: FieldLike) {
     return new DeployMethod<CoinTossContract>(Point.ZERO, wallet, CoinTossContractArtifact, Array.from(arguments).slice(1));
   }
 
   /**
    * Creates a tx to deploy a new instance of this contract using the specified public key to derive the address.
    */
-  public static deployWithPublicKey(publicKey: PublicKey, wallet: Wallet, divinity: AztecAddressLike, private_oracle: AztecAddressLike, token: AztecAddressLike, bet_amount: FieldLike, phase_length: FieldLike) {
+  public static deployWithPublicKey(publicKey: PublicKey, wallet: Wallet, divinity: AztecAddressLike, divinity_bjj_public_key: { point: { x: FieldLike, y: FieldLike } }, private_oracle: AztecAddressLike, token: AztecAddressLike, bet_amount: FieldLike, phase_length: FieldLike) {
     return new DeployMethod<CoinTossContract>(publicKey, wallet, CoinTossContractArtifact, Array.from(arguments).slice(2));
   }
   
@@ -79,14 +79,26 @@ export class CoinTossContract extends ContractBase {
   /** Type-safe wrappers for the public methods exposed by the contract. */
   public methods!: {
     
+    /** _end_bet_phase(round_id: field) */
+    _end_bet_phase: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** _increase_bettors(round_id: field) */
     _increase_bettors: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** _increase_reveals(round_id: field, user_bet: field) */
     _increase_reveals: ((round_id: FieldLike, user_bet: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** _init_bjj(serialized: array) */
+    _init_bjj: ((serialized: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** _initialize(phase_length: field, bet_amount: field, oracle_address: struct, divinity_address: struct, token_address: struct) */
+    _initialize: ((phase_length: FieldLike, bet_amount: FieldLike, oracle_address: AztecAddressLike, divinity_address: AztecAddressLike, token_address: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** _set_result(caller: field, round_id: field, answer: field) */
     _set_result: ((caller: FieldLike, round_id: FieldLike, answer: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** _update_cumsum(round_id: field, encrypted_bet_C1_field: array, encrypted_bet_C2_field: array) */
+    _update_cumsum: ((round_id: FieldLike, encrypted_bet_C1_field: FieldLike[], encrypted_bet_C2_field: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** _validate_claim(round_id: field, amount: field) */
     _validate_claim: ((round_id: FieldLike, amount: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
@@ -99,9 +111,6 @@ export class CoinTossContract extends ContractBase {
 
     /** compute_note_hash_and_nullifier(contract_address: field, nonce: field, storage_slot: field, preimage: array) */
     compute_note_hash_and_nullifier: ((contract_address: FieldLike, nonce: FieldLike, storage_slot: FieldLike, preimage: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
-    /** end_bet_phase(round_id: field) */
-    end_bet_phase: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** end_reveal_phase() */
     end_reveal_phase: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
@@ -139,14 +148,11 @@ export class CoinTossContract extends ContractBase {
     /** get_user_bets_unconstrained(start_offset: integer) */
     get_user_bets_unconstrained: ((start_offset: (bigint | number)) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** initialize(phase_length: field, bet_amount: field, oracle_address: struct, divinity_address: struct, token_address: struct) */
-    initialize: ((phase_length: FieldLike, bet_amount: FieldLike, oracle_address: AztecAddressLike, divinity_address: AztecAddressLike, token_address: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
     /** is_round_randomness_nullified(round_id: field, randomness: field) */
     is_round_randomness_nullified: ((round_id: FieldLike, randomness: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** oracle_callback(answer: field, data: array) */
-    oracle_callback: ((answer: FieldLike, data: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+    /** oracle_callback(answer: array, data: array) */
+    oracle_callback: ((answer: FieldLike[], data: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** reveal(round_id: field, user_randomness: field) */
     reveal: ((round_id: FieldLike, user_randomness: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
