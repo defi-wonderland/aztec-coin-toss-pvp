@@ -208,6 +208,8 @@ contract CoinToss {
         let selector = compute_selector("_initialize(Field,Field,(Field),(Field),(Field))");
         context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
 
+        assert(noir_elgamal::is_valid_subgroup(divinity_bjj_public_key.point), "Invalid divinity public key - are you really on bjj curve?");
+
         // insure function selector remains correct in later dev stage
         assert(AFFINE_POINT_SERIALIZED_LEN == 2);
         let selector2 = compute_selector("_init_bjj([Field;2])");
