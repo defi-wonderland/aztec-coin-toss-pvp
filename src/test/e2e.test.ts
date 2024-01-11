@@ -1,7 +1,6 @@
 import {
   AccountWalletWithPrivateKey,
   AztecAddress,
-  BatchCall,
   CheatCodes,
   computeAuthWitMessageHash,
   computeMessageSecretHash,
@@ -16,6 +15,8 @@ import {
   TxHash,
   TxStatus,
   waitForSandbox,
+  getUnsafeSchnorrAccount,
+  Fq
 } from "@aztec/aztec.js";
 
 import { initAztecJs } from "@aztec/aztec.js/init";
@@ -38,6 +39,15 @@ const ORACLE_FEE = 100n;
 const BET_AMOUNT = 1337n;
 
 const PHASE_LENGTH = 10 * 60; // 10 minutes
+
+// Babyjubjub divinity data
+const divinityPrivateKey = 2360067582289791756090345803415031600606727745697750731963540090262281758098n;
+
+// Resulting public key on the BJJ curve when deriving from the DIVINITY_PRIVATE_KEY declared above
+// Use https://github.com/jat9292/babyjubjub-utils to generate new ones
+const DIVINITY_PUBLIC_KEY_BJJ_X = 17330617431291011652840919965771789495411317073490913928764661286424537084069n
+const DIVINITY_PUBLIC_KEY_BJJ_Y = 12743939760321333065626220799160222400501486578575623324257991029865760346009n
+const DIVINITY_PUBLIC_KEY_BJJ = { point: { x: DIVINITY_PUBLIC_KEY_BJJ_X, y: DIVINITY_PUBLIC_KEY_BJJ_Y } };
 
 // Global variables
 let pxe: PXE;
@@ -65,6 +75,8 @@ beforeAll(async () => {
     createAccount(pxe),
   ]);
   await initAztecJs();
+
+  divinity = await getUnsafeSchnorrAccount(pxe, new Fq(divinityPrivateKey)).waitDeploy()
 }, 120_000);
 
 describe("E2E Coin Toss", () => {
@@ -102,6 +114,7 @@ describe("E2E Coin Toss", () => {
     const coinTossReceipt = await CoinTossContract.deploy(
       deployer,
       divinity.getAddress(),
+      DIVINITY_PUBLIC_KEY_BJJ,
       oracle.address,
       token.address,
       BET_AMOUNT,
@@ -567,6 +580,8 @@ const addConfigNotesToPxe = async (
     new ExtendedNote(
       new Note([
         divinityAsFr,
+        new Fr(DIVINITY_PUBLIC_KEY_BJJ.point.x),
+        new Fr(DIVINITY_PUBLIC_KEY_BJJ.point.y),
         privateOracleAsFr,
         tokenAsFr,
         betAmountAsFr,
