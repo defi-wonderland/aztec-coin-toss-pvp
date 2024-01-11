@@ -29,7 +29,6 @@ impl AffinePoint {
         }
     }
 
-    // Add 2 points on BabyJubJub curve
     fn add(self, other: Self) -> Self {
         let bjj_affine = noir_elgamal::get_affine_curve();
 
@@ -37,7 +36,15 @@ impl AffinePoint {
             point: bjj_affine.add(self.point, other.point)
         }
     }
+
+    fn eq(self, other: Self) -> bool {
+        self.point.eq(other.point)
+    }
 }
+
+// "traits are experimental and not yet fully implemented"
+// impl Eq for AffinePoint {
+// }
 
 fn deserialize(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) -> AffinePoint {
     AffinePoint::deserialize(serialized)

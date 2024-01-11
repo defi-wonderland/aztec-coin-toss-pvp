@@ -24,23 +24,31 @@ impl ElgamalAffinePoints {
   
     pub fn deserialize(serialized: [Field; ELGAMAL_AFFINE_POINTS_SERIALIZED_LEN]) -> Self {
         Self {
-            C1: AffinePoint::new(Point{
-                x: serialized[0],
-                y: serialized[1]
-            }),
-            C2: AffinePoint::new(Point{
-                x: serialized[2],
-                y: serialized[3]
-            })
+            C1: AffinePoint::new(
+                Point{
+                    x: serialized[0],
+                    y: serialized[1]
+                }
+            ),
+            C2: AffinePoint::new(
+                Point{
+                    x: serialized[2],
+                    y: serialized[3]
+                }
+            )
         }
     }
 
-    // Add 2 encrypted messages
     fn add(self, second: ElgamalAffinePoints) -> Self {
         Self {
             C1: self.C1.add(second.C1),
             C2: self.C2.add(second.C2)
         }
+    }
+
+    // todo: implement as trait when they are supported
+    fn eq(self, second: ElgamalAffinePoints) -> bool {
+        self.C1.eq(second.C1) && self.C2.eq(second.C2)
     }
 }
 

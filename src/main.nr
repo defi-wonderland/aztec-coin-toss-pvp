@@ -411,6 +411,18 @@ contract CoinToss {
         storage.number_of_tails.at(round_id).write(new_tails_encrypted_count);
     }
 
+    /// @notice         Validates the encrypted cumulative sum of tails
+    /// @custom:privacy public internal
+    /// @param          encrypted_tail_sum The encrypted tail sum
+    #[aztec(public)]
+    internal fn _validate_encrypted_tail_sum(encrypted_tail_sum: [Field;4]) {
+        let round_id = storage.round_id.read();
+        let encrypted_tail_sum = ElgamalAffinePoints::deserialize(encrypted_tail_sum);
+        let encrypted_tails_count = storage.number_of_tails.at(round_id).read();
+ 
+        assert(encrypted_tails_count.eq(encrypted_tail_sum), "Encrypted tail sum mismatch");
+    }
+
     /////////////////////////////////////////////////////////////////////
     //                   Private external functions                    //
     /////////////////////////////////////////////////////////////////////
@@ -467,13 +479,15 @@ contract CoinToss {
     /// @custom:privacy private
     /// @param          round_id The id of the current round
     #[aztec(private)]
-    fn roll(round_id: Field, oracle_nonce: Field) {
+    fn roll(round_id: Field, oracle_nonce: Field, encrypted_tail_sum: ElgamalAffinePoints) {
         let sender = AztecAddress::new(context.msg_sender());
         let config_note = storage.config.get_note();
         let divinity = config_note.divinity;
         let oracle = config_note.private_oracle;
         let oracle_contract = PrivateOraclePrivateContextInterface::at(oracle.address);
         let address_this = AztecAddress::new(context.this_address());
+
+
 
         // Create the question in the oracle
         let callback = [address_this.address, round_id, 0, 0, 0, 0];
@@ -490,6 +504,14 @@ contract CoinToss {
         // This checks that the round id is correct and that the phase is BETTING
         let selector = compute_selector("_end_bet_phase(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
+
+        // Validate the encrypted tail sum passed as an arg
+        let encrypted_sum_serialized = encrypted_tail_sum.serialize();
+        context.call_public_function(
+            context.this_address(), 
+            compute_selector("_validate_encrypted_tail_sum(Field,[Field;4])"), 
+            [round_id, encrypted_sum_serialized[0], encrypted_sum_serialized[1], encrypted_sum_serialized[2], encrypted_sum_serialized[3]]
+        );
     }
 
     /// @notice         Called by the oracle to set the result of the bet round
