@@ -10,7 +10,7 @@ mod Phase {
 struct RoundData {
     phase: u120, 
     current_phase_end: u120, 
-    reveals_count: u120,
+    reveals_count: u120, // TODO: remove this field
     bettors: u120,
     claim_amount: u120,
 }

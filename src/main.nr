@@ -56,6 +56,7 @@ contract CoinToss {
         },
         oracle::{
             get_public_key::get_public_key,
+            get_secret_key::get_secret_key,
             rand::rand
         },
         selector::compute_selector,
@@ -208,7 +209,7 @@ contract CoinToss {
         let selector = compute_selector("_initialize(Field,Field,(Field),(Field),(Field))");
         context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
 
-        assert(noir_elgamal::is_valid_subgroup(divinity_bjj_public_key.point), "Invalid divinity public key - are you really on bjj curve?");
+        assert(noir_elgamal::is_valid_subgroup(divinity_bjj_public_key.point), "Invalid divinity public key - are you really in bjj field?");
 
         // insure function selector remains correct in later dev stage
         assert(AFFINE_POINT_SERIALIZED_LEN == 2);
@@ -337,10 +338,31 @@ contract CoinToss {
     /// @param          caller The caller of the function (the oracle)
     /// @param          round_id The id of the current round
     #[aztec(public)]
-    internal fn _set_result(caller: Field, round_id: Field, answer: Field) {
+    internal fn _set_result(caller: Field, round_id: Field, answer: [Field;2], divinity_cum_sum: [Field;4], divinity_plain_embedded: [Field;2], divinity_public_key: [Field;2]) {
         let oracle = storage.oracle_address.read();
         let timestamp = context.timestamp() as u120;
         let phase_length = storage.phase_length.read() as u120;
+        let bjj_affine = get_affine_curve();
+        let base_pt = get_base_point();
+
+        let coin_toss_result = answer[0];
+        let bet_sum_plaintext = answer[1] as u40;
+        let divinity_cumsum = ElgamalAffinePoints::deserialize(divinity_cum_sum[0], divinity_cum_sum[1], divinity_cum_sum[2], divinity_cum_sum[3]);
+        let divinity_public_key = AffinePoint::deserialize(divinity_public_key[0], divinity_public_key[1]);
+        let divinity_plain_embedded = AffinePoint::deserialize(divinity_plain_embedded[0], divinity_plain_embedded[1]);
+
+        // get the public_key from storage and compare it to the passed in one
+        let divinity_bjj_key = storage.divinity_bjj_public_key.read();
+        assert(divinity_bjj_key == divinity_public_key);
+
+        // check that the passed in encrypted sum is the same as in storage
+        let encrypted_cumsum = storage.number_of_tails.at(round_id).read();
+        assert(divinity_cumsum == encrypted_cumsum);
+
+        let expected_plain_embedded: AffinePoint = bjj_affine.mul(bet_sum_plaintext, base_pt);
+        assert(expected_plain_embedded == divinity_plain_embedded);
+        
+        // if tails won, update it one way, otherwise calculate the other way
 
         /// Checks that the caller is the oracle
         assert(caller == oracle.address, "Caller is not the oracle");
@@ -353,7 +375,12 @@ contract CoinToss {
         let current_round_data = storage.rounds.at(current_round_id).read();
         assert(current_round_data.phase == Phase::AWAITING_ANSWER, "Not in awaiting answer phase");
 
-        let new_round_data = RoundData::new(Phase::REVEAL, (timestamp + phase_length) as u120, 0, current_round_data.bettors, 0);
+        let bet_amount = storage.bet_amount.read() as u120;
+        let number_of_bettors = current_round_data.bettors;
+        let number_of_winners = coin_toss_result ? divinity_cumsum : number_of_bettors - divinity_cumsum;
+        let claim_amount = number_of_bettors * bet_amount / number_of_winners;
+
+        let new_round_data = RoundData::new(Phase::CLAIM, (timestamp + phase_length) as u120, 0, current_round_data.bettors, claim_amount);
         storage.rounds.at(round_id).write(new_round_data);
 
         /// Updates the result mapping
@@ -488,11 +515,10 @@ contract CoinToss {
         let oracle = config_note.private_oracle;
         let oracle_contract = PrivateOraclePrivateContextInterface::at(oracle.address);
         let address_this = AztecAddress::new(context.this_address());
-
-
+        let encrypted_sum_serialized = encrypted_tail_sum.serialize();
 
         // Create the question in the oracle
-        let callback = [address_this.address, round_id, 0, 0, 0, 0];
+        let callback = [address_this.address, round_id, encrypted_sum_serialized[0], encrypted_sum_serialized[1], encrypted_sum_serialized[2], encrypted_sum_serialized[3]];
         let __ = oracle_contract.submit_question(
             &mut context,
             FromSubmitQuestionStruct { address: sender.address },
@@ -507,8 +533,6 @@ contract CoinToss {
         let selector = compute_selector("_end_bet_phase(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
 
-        // Validate the encrypted tail sum passed as an arg
-        let encrypted_sum_serialized = encrypted_tail_sum.serialize();
         context.call_public_function(
             context.this_address(), 
             compute_selector("_validate_encrypted_tail_sum(Field,[Field;4])"), 
@@ -516,18 +540,31 @@ contract CoinToss {
         );
     }
 
-    /// @notice         Called by the oracle to set the result of the bet round
+    /// @notice         Called by the oracle to set the result of the bet round and update the claimable amount for the winners
     /// @param          answer The answer of the oracle
-    ///                 answer[0] The randomness
-    ///                 answer[1:2] unused
+    ///                 answer[0] bet result
+    ///                 answer[1] plaintext
+    ///                 answer[2] divinity private_key
     /// @param          data The data of the oracle 
     ///                 data[0]: round_id
-    ///                 data[1:4]: unused
+    ///                 data[1:4]: serialized encrypted_sum
     #[aztec(private)]
-    fn oracle_callback(answer: [Field; 3], data: [Field; 5]) {
+    fn oracle_callback(answer: [Field; 3], data: [Field; 5], divinity_address: AztecAddress) {
         let round_id = data[0];
-        let selector = compute_selector("_set_result(Field,Field,Field)");
-        context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, answer[0]]);
+        let coin_toss_result = answer[0];
+        let private_key = answer[1]
+        let bet_sum_plaintext = answer[2]
+        let divinity_address_config = storage.config.get_note().divinity_address;
+
+        assert(bet_sum_plaintext as u40 <= u40::max_value(), "Bet should fit in u40");
+        assert(divinity_address_config.address == divinity_address.address, "Caller is not the designated divinity");
+
+        let divinity_cumsum = ElgamalAffinePoints::deserialize(data[1], data[2], data[3], data[4]);
+        let divinity_public_key: AffinePoint = bjj::priv_to_pub_key(private_key);
+        let divinity_plain_embedded: AffinePoint = bjj::exp_elgamal_decrypt(private_key, divinity_cumsum);
+
+        let selector = compute_selector("_set_result(Field,Field,[Field;2],[Field;4],[Field;2],[Field;2])");
+        context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, coin_toss_result, bet_sum_plaintext, divinity_cumsum, divinity_plain_embedded, divinity_public_key]);
     }
 
     /// @notice         Called by the user to reveal that they won
