@@ -589,7 +589,7 @@ describe("E2E Coin Toss", () => {
     });
   });
 
-  describe.skip("claim", () => {
+  describe("claim", () => {
     let coinTossPublicBalanceBefore: bigint;
     let userPrivateBalanceBefore: bigint;
 
@@ -645,7 +645,7 @@ describe("E2E Coin Toss", () => {
         .methods.claim(roundId, claimAmount, bets[0].randomness)
         .simulate();
       await expect(claimTx).rejects.toThrow(
-        "(JSON-RPC PROPAGATED) Assertion failed: bet note not found 'false'"
+        "(JSON-RPC PROPAGATED) Assertion failed: Bet note not found 'false'"
       );
     });
 
