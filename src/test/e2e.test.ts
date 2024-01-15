@@ -560,13 +560,27 @@ describe("E2E Coin Toss", () => {
       expect(Number(currentAnswer)).toBe(betResult);
     });
 
-    it("reverts when called by someone else", async () => {
+    it("reverts when trying to use a wrong divinity key", async () => {
       const callbackTx = coinToss
         .withWallet(user)
         .methods.oracle_callback(
           [0n, 0n, 0n],
           [0n, 0n, 0n, 0n, 0n],
           divinity.getAddress()
+        )
+        .simulate();
+      await expect(callbackTx).rejects.toThrow(
+        "(JSON-RPC PROPAGATED) Failed to solve brillig function, reason: explicit trap hit in brillig 'divinity_bjj_key.eq(divinity_public_key)"
+      );
+    });
+
+    it("reverts when called by someone else", async () => {
+      const callbackTx = coinToss
+        .withWallet(user)
+        .methods.oracle_callback(
+          [0n, 0n, 0n],
+          [0n, 0n, 0n, 0n, 0n],
+          user2.getAddress()
         )
         .simulate();
       await expect(callbackTx).rejects.toThrow(
