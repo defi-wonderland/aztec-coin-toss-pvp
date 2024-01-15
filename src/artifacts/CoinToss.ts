@@ -85,9 +85,6 @@ export class CoinTossContract extends ContractBase {
     /** _increase_bettors(round_id: field) */
     _increase_bettors: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** _increase_reveals(round_id: field, user_bet: field) */
-    _increase_reveals: ((round_id: FieldLike, user_bet: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
     /** _init_bjj(serialized: array) */
     _init_bjj: ((serialized: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -100,23 +97,20 @@ export class CoinTossContract extends ContractBase {
     /** _update_cumsum(round_id: field, encrypted_bet_C1_field: array, encrypted_bet_C2_field: array) */
     _update_cumsum: ((round_id: FieldLike, encrypted_bet_C1_field: FieldLike[], encrypted_bet_C2_field: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** _validate_claim(round_id: field, amount: field) */
-    _validate_claim: ((round_id: FieldLike, amount: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+    /** _validate_claim(round_id: field, amount: field, user_bet: field) */
+    _validate_claim: ((round_id: FieldLike, amount: FieldLike, user_bet: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** _validate_encrypted_tail_sum(encrypted_tail_sum: array) */
-    _validate_encrypted_tail_sum: ((encrypted_tail_sum: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+    /** _validate_encrypted_tail_sum(encrypted_tail_sum_test: array) */
+    _validate_encrypted_tail_sum: ((encrypted_tail_sum_test: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** bet(bet: boolean, round_id: field, bet_randomness: field, unshield_nonce: field) */
     bet: ((bet: boolean, round_id: FieldLike, bet_randomness: FieldLike, unshield_nonce: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** claim(round_id: field, amount: field) */
-    claim: ((round_id: FieldLike, amount: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+    /** claim(round_id: field, amount: field, user_randomness: field) */
+    claim: ((round_id: FieldLike, amount: FieldLike, user_randomness: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** compute_note_hash_and_nullifier(contract_address: field, nonce: field, storage_slot: field, preimage: array) */
     compute_note_hash_and_nullifier: ((contract_address: FieldLike, nonce: FieldLike, storage_slot: FieldLike, preimage: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
-    /** end_reveal_phase() */
-    end_reveal_phase: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** get_bet_amount_unconstrained() */
     get_bet_amount_unconstrained: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
@@ -136,9 +130,6 @@ export class CoinTossContract extends ContractBase {
     /** get_result(round_id: field) */
     get_result: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** get_reveal_notes_unconstrained(start_offset: integer) */
-    get_reveal_notes_unconstrained: ((start_offset: (bigint | number)) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
     /** get_round_data(round_id: field) */
     get_round_data: ((round_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -156,9 +147,6 @@ export class CoinTossContract extends ContractBase {
 
     /** oracle_callback(answer: array, data: array, divinity_address: struct) */
     oracle_callback: ((answer: FieldLike[], data: FieldLike[], divinity_address: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
-
-    /** reveal(round_id: field, user_randomness: field) */
-    reveal: ((round_id: FieldLike, user_randomness: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
     /** roll(round_id: field, oracle_nonce: field, encrypted_tail_sum: struct) */
     roll: ((round_id: FieldLike, oracle_nonce: FieldLike, encrypted_tail_sum: { C1: { point: { x: FieldLike, y: FieldLike } }, C2: { point: { x: FieldLike, y: FieldLike } } }) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;

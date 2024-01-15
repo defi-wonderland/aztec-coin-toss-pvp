@@ -20,8 +20,7 @@ import {
 } from "@aztec/aztec.js";
 
 import { initAztecJs } from "@aztec/aztec.js/init";
-
-import { BetNote, RevealNote } from "./Notes.js";
+import { BetNote } from "./Notes.js";
 import { CoinTossContract } from "../artifacts/CoinToss.js";
 import { TokenContract } from "../artifacts/token/Token.js";
 import { PrivateOracleContract } from "../artifacts/oracle/PrivateOracle.js";
@@ -48,6 +47,31 @@ const divinityPrivateKey = 23600675822897917560903458034150316006067277456977507
 const DIVINITY_PUBLIC_KEY_BJJ_X = 17330617431291011652840919965771789495411317073490913928764661286424537084069n
 const DIVINITY_PUBLIC_KEY_BJJ_Y = 12743939760321333065626220799160222400501486578575623324257991029865760346009n
 const DIVINITY_PUBLIC_KEY_BJJ = { point: { x: DIVINITY_PUBLIC_KEY_BJJ_X, y: DIVINITY_PUBLIC_KEY_BJJ_Y } };
+
+// Randomness have been generated using a modified babyjubjub-utils that prints the randomness used when encrypting.
+const RANDOMNESS_USER_1 = 1678420198869439071081414208859739387742223959820771935773616568033914043835n
+const RANDOMNESS_USER_2 = 1149944207461542350208025425328174090742217022415510531453574872250899169836n
+const RANDOMNESS_USER_3 = 835696279441939870627929547400091031761978127116119277761576441161179240509n
+const RANDOMNESS_ARR = [RANDOMNESS_USER_1, RANDOMNESS_USER_2, RANDOMNESS_USER_3]
+
+const FINAL_CUM_SUM_C1_X = 85960524359941382030532914784674139859727212243135861044442639620406216872n
+const FINAL_CUM_SUM_C1_Y = 13099640495196231927243969593200089763900263920753570945092105570697489617332n
+const FINAL_CUM_SUM_C2_X = 4958585785232079657284273672988610915474203957001428292178217863517189211185n
+const FINAL_CUM_SUM_C2_Y = 9349995997574284569141099778027368564689842158437608023475825893906826094158n
+const ENCRYPTED_TAIL_SUM = {
+  C1: {
+      point: {
+          x: FINAL_CUM_SUM_C1_X, 
+          y: FINAL_CUM_SUM_C1_Y
+      }
+  },
+  C2: {
+      point: {
+          x: FINAL_CUM_SUM_C2_X, 
+          y: FINAL_CUM_SUM_C2_Y
+      }
+  }
+};
 
 // Global variables
 let pxe: PXE;
@@ -83,11 +107,10 @@ describe("E2E Coin Toss", () => {
 
   let roundId = 0n;
   let bets: BetNote[];
-  let answer: number;
+  let betResult: number;
   let bettors: number = 0;
   let winners: number = 0;
-  let claimAmount: bigint;
-  let revealPhaseEnd: number
+  let claimAmount: bigint = 0n;
 
   // Setup: Deploy the contracts and mint tokens, ready for escrow
   beforeAll(async () => {
@@ -184,13 +207,13 @@ describe("E2E Coin Toss", () => {
       let startNextRoundTx = coinToss.methods.start_next_round().simulate();
       await expect(startNextRoundTx)
         .rejects
-        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Current round not finished 'current_round_data.phase >= Phase::REVEAL'");
+        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Current round not finished 'current_round_data.phase == Phase::CLAIM'");
     });
   });
 
   describe('bet', () => {
     it("reverts if the round id is not the current one", async () => {
-      bets = createUserBetNotes(3);
+      bets = createThreeBetNotes();
       const unshieldNonce = Fr.random();
       const roundId = await coinToss.withWallet(user).methods.get_round_id().view();
       const wrongRoundId = roundId + 1n
@@ -217,6 +240,7 @@ describe("E2E Coin Toss", () => {
       // Send the transaction
       const receipt = await coinToss.withWallet(user).methods.bet(bets[0].bet, bets[0].round_id, bets[0].randomness, unshieldNonce).send().wait()
       expect(receipt.status).toBe("mined");
+      winners++; // update only if bet == answer
       bettors++;
     })
 
@@ -230,6 +254,7 @@ describe("E2E Coin Toss", () => {
       // Send the transaction
       const receipt2 = await coinToss.withWallet(user2).methods.bet(bets[1].bet, bets[1].round_id, bets[1].randomness, unshieldNonce).send().wait()
       expect(receipt2.status).toBe("mined");
+      winners++;
       bettors++;
 
       // Create authwit so that cointoss can call unshield as the recipient
@@ -291,7 +316,8 @@ describe("E2E Coin Toss", () => {
     let betPhaseEnd: number;
     
     beforeAll(async () => {
-      callback = [coinToss.address, roundId, 0, 0, 0, 0];
+      callback = [coinToss.address, roundId, FINAL_CUM_SUM_C1_X, FINAL_CUM_SUM_C1_Y, FINAL_CUM_SUM_C2_X, FINAL_CUM_SUM_C2_Y];
+      claimAmount = BigInt(bettors) * BET_AMOUNT / BigInt(winners);
 
       // Create auth for deployer to escrow tokens to the oracle
       const escrowAction = token.methods.escrow(deployer.getAddress(), oracle.address, ORACLE_FEE, nonce);
@@ -303,7 +329,7 @@ describe("E2E Coin Toss", () => {
     });
 
     it('reverts if the betting phase did not end', async () => {
-      const rollTx = coinToss.withWallet(deployer).methods.roll(roundId, nonce).simulate();
+      const rollTx = coinToss.withWallet(deployer).methods.roll(roundId, nonce, ENCRYPTED_TAIL_SUM).simulate();
       await expect(rollTx).rejects.toThrow("(JSON-RPC PROPAGATED) Assertion failed: Bet phase not finished 'timestamp >= current_round_data.current_phase_end'");
     });
     
@@ -314,27 +340,33 @@ describe("E2E Coin Toss", () => {
       await cc.aztec.warp(betPhaseEnd + 1);
 
       // Roll
-      const rollReceipt = await coinToss.withWallet(deployer).methods.roll(roundId, nonce).send().wait();
+      const rollReceipt = await coinToss.withWallet(deployer).methods.roll(roundId, nonce, ENCRYPTED_TAIL_SUM).send().wait();
       expect(rollReceipt.status).toBe(TxStatus.MINED);
     })
 
-    it('updated the round data', async () => {
-      const currentRound = await coinToss.methods.get_round_data(roundId).view();
-      expect(currentRound.phase).toBe(2n);
-      expect(Number(currentRound.current_phase_end)).toBe(betPhaseEnd + 1 + PHASE_LENGTH);
-    });
+
+    it('updates the round data correctly', async () => {
+      const phaseEnd = betPhaseEnd + 1 + PHASE_LENGTH;
+      const storedRoundData = await coinToss.methods.get_round_data(roundId).view();
+       
+      expect(storedRoundData.phase).toEqual(3n);
+      expect(storedRoundData.current_phase_end).toEqual(BigInt(phaseEnd));
+      expect(storedRoundData.bettors).toEqual(BigInt(bettors));
+      expect(storedRoundData.claim_amount).toEqual(claimAmount);
+    })
   });
 
   describe('oracle_callback', () => {
     let currentTime: number;
 
     it('tx gets mined', async () => {
-      answer = Number(bets[0].bet);
+      betResult = Number(bets[0].bet);
 
       currentTime = await cc.eth.timestamp() + 1;
       await cc.aztec.warp(currentTime);
-
-      const receipt = await oracle.withWallet(divinity).methods.submit_answer(roundId, deployer.getAddress(), [answer, 0n, 0n]).send().wait();
+      
+      // Using winners parameter here as the bet result will be 1, therefore the plaintext will be those that bet TAILS (1).
+      const receipt = await oracle.withWallet(divinity).methods.submit_answer(roundId, deployer.getAddress(), [betResult, winners, divinityPrivateKey]).send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
     });
 
@@ -347,26 +379,27 @@ describe("E2E Coin Toss", () => {
 
     it('updates the answer', async () => {
       const currentAnswer = await coinToss.methods.get_result(roundId).view();
-      expect(Number(currentAnswer)).toBe(answer);
+      expect(Number(currentAnswer)).toBe(betResult);
     });
 
     it('reverts when called by someone else', async () => {
-      const callbackTx = coinToss.withWallet(user).methods.oracle_callback([0n, 0n, 0n], [0n,0n,0n,0n,0n]).simulate();
+      const callbackTx = coinToss.withWallet(user).methods.oracle_callback([0n, 0n, 0n], [0n,0n,0n,0n,0n], divinity.getAddress()).simulate();
       await expect(callbackTx)
         .rejects
         .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Caller is not the oracle 'caller == oracle.address'");
     });
   });
 
-  describe('reveal', () => {
-    beforeAll(async () => {
-      revealPhaseEnd = await coinToss.methods.get_round_data(roundId).view().then((roundData: any) => Number(roundData.current_phase_end));
-    })
+  describe('claim', () => {
+    let coinTossPublicBalanceBefore: bigint;
+    let userPrivateBalanceBefore: bigint;
 
     it('tx gets mined', async () => {
-      const receipt = await coinToss.withWallet(user).methods.reveal(roundId, bets[0].randomness).send().wait();
+      coinTossPublicBalanceBefore = await token.methods.balance_of_public(coinToss.address).view();
+      userPrivateBalanceBefore = await token.methods.balance_of_private(user.getAddress()).view();
+
+      const receipt = await coinToss.withWallet(user).methods.claim(roundId, claimAmount, bets[0].randomness).send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
-      winners++;
     });
 
     it('nullifies bet note', async () => {
@@ -380,104 +413,6 @@ describe("E2E Coin Toss", () => {
       expect(betNote).toBeUndefined();
     });
 
-    it('allows multiple users to reveal', async() => {
-      const receipt = await coinToss.withWallet(user2).methods.reveal(roundId, bets[1].randomness).send().wait();
-      expect(receipt.status).toBe(TxStatus.MINED);
-      winners++;
-    });
-
-    it('creates reveal note for the user', async () => {
-      const revealNote = new RevealNote(
-        (
-          await coinToss
-            .withWallet(user)
-            .methods.get_reveal_notes_unconstrained(0n)
-            .view({ from: user.getAddress() })
-        )[0]._value
-      );
-
-      // Check: Compare the note's data with the expected values
-      const expectedRevealNote: RevealNote = {
-        owner: bets[0].owner,
-        round_id: roundId,
-        randomness: bets[0].randomness
-      };
-
-      expect(expectedRevealNote).toEqual(expect.objectContaining(revealNote));
-    });
-
-    it('increases reveal count in the round data', async () => {
-      const currentRound = await coinToss.methods.get_round_data(roundId).view();
-      expect(currentRound.reveals_count).toBe(BigInt(winners));
-    });
-
-    it('reverts if there is no matching bet note', async () => {
-      const revealTx = coinToss.withWallet(user).methods.reveal(roundId, bets[0].randomness).simulate();
-      await expect(revealTx)
-      .rejects
-      .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Bet note not found 'false'");
-    });
-
-    // Need a second bet to test this
-    it.skip('should revert if the timestamp of the reveal phase has elapsed', async () => {
-      await cc.aztec.warp(revealPhaseEnd);
-      const revealTx = coinToss.withWallet(user).methods.reveal(roundId, bets[0].randomness).simulate();
-      await expect(revealTx)
-        .rejects
-        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Reveal phase finished 'timestamp < round_data.current_phase_end'");
-    });
-
-    it.skip('reverts if the phase is not reveal', async () => {
-    });
-
-    it.skip('reverts if the user bet doesnt match the reported result', async () => {
-    });
-  });
-
-  describe('end_reveal_phase', () => {
-
-    it.skip('reverts if the phase is not reveal', async () => {
-    })
-
-    it('reverts if the timestamp has not reached the end of the phase', async () => {
-      const endRevealPhaseTx = coinToss.withWallet(user).methods.end_reveal_phase().simulate();
-      
-      await expect(endRevealPhaseTx)
-        .rejects
-        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Reveal phase not finished 'timestamp >= current_round_data.current_phase_end'");
-    })  
-
-    it('tx gets mined', async () => {
-      await cc.aztec.warp(revealPhaseEnd + 1);
-      const receipt = await coinToss.withWallet(user).methods.end_reveal_phase().send().wait();
-      expect(receipt.status).toBe(TxStatus.MINED);
-    });
-    
-    it('updates the round data correctly', async () => {
-      const phaseEnd = revealPhaseEnd + 1 + PHASE_LENGTH;
-      const storedRoundData = await coinToss.methods.get_round_data(roundId).view();
-      claimAmount = BigInt(bettors) * BET_AMOUNT / BigInt(winners);
-       
-      expect(storedRoundData.phase).toEqual(4n);
-      expect(storedRoundData.current_phase_end).toEqual(BigInt(phaseEnd));
-      expect(storedRoundData.bettors).toEqual(BigInt(bettors));
-      expect(storedRoundData.reveals_count).toEqual(BigInt(winners));
-      expect(storedRoundData.claim_amount).toEqual(claimAmount);
-    })
-  });
-
-  describe('claim', () => {
-    let coinTossPublicBalanceBefore: bigint;
-    let userPrivateBalanceBefore: bigint;
-
-    it('tx gets mined', async () => {
-      coinTossPublicBalanceBefore = await token.methods.balance_of_public(coinToss.address).view();
-      userPrivateBalanceBefore = await token.methods.balance_of_private(user.getAddress()).view();
-
-      const receipt = await coinToss.withWallet(user).methods.claim(roundId, claimAmount).send().wait();
-      expect(receipt.status).toBe(TxStatus.MINED);
-    });
-
     it('reduces the public balance of the coin toss', async () => {
       const coinTossBalance = await token.methods.balance_of_public(coinToss.address).view();
       expect(coinTossBalance).toBe(coinTossPublicBalanceBefore - claimAmount);
@@ -488,49 +423,46 @@ describe("E2E Coin Toss", () => {
       expect(privateBalanceAfter).toBe(userPrivateBalanceBefore + claimAmount);
     });
 
-    it('nullifies the reveal note', async () => {
-      const revealNote = 
-          (await coinToss
-            .withWallet(user)
-            .methods.get_reveal_notes_unconstrained(0n)
-            .view({ from: user.getAddress() }))
-            .find((noteObj: any) => noteObj._value.randomness == bets[0].randomness && noteObj._value.round_id == bets[0].round_id);
-
-      expect(revealNote).toBeUndefined();
-    });
-
-    it('reverts when trying to claim without a reveal note', async () => {
-      const claimTx = coinToss.withWallet(user3).methods.claim(roundId, claimAmount).simulate();
+    it('reverts when trying to claim without a bet note', async () => {
+      const randomUser = await createAccount(pxe)
+      const claimTx = coinToss.withWallet(randomUser).methods.claim(roundId, claimAmount, bets[0].randomness).simulate();
       await expect(claimTx)
         .rejects
-        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Reveal note not found 'false'");
+        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: bet note not found 'false'");
     });
 
     it('reverts when a user tries to claim more than claimAmount', async () => {
-      const claimTx = coinToss.withWallet(user2).methods.claim(roundId, claimAmount + 1n).simulate();
+      const claimTx = coinToss.withWallet(user2).methods.claim(roundId, claimAmount + 1n, bets[0].randomness).simulate();
       await expect(claimTx)
         .rejects
-        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Claim amount mismatch 'claim_amount == amount as u120'");
+        .toThrow("(JSON-RPC PROPAGATED) Assertion failed: Claim amount mismatch 'claimAmount == amount as u120'");
+    });
+
+    it.skip('reverts if the phase is not claim', async () => {
+    });
+
+    it.skip('reverts if the user bet doesnt match the reported result', async () => {
     });
 
     it('allows all the winners to claim', async () => {
-      const receipt = await coinToss.withWallet(user2).methods.claim(roundId, claimAmount).send().wait();
+      const receipt = await coinToss.withWallet(user2).methods.claim(roundId, claimAmount, bets[0].randomness).send().wait();
       expect(receipt.status).toBe(TxStatus.MINED);
     });
   });
 });
 
 // Create an array of mock bet notes
-function createUserBetNotes(number: number = 3): BetNote[] {
+// TODO: allow for arbitrary notes when the different randomness dont have to be hardcoded
+function createThreeBetNotes(): BetNote[] {
   let betNote: BetNote;
   let betNotes: BetNote[] = [];
 
-  for (let i = 0; i < number; i++) {
+  for (let i = 0; i < 3; i++) {
     betNote = new BetNote({
       owner: user.getAddress(),
       round_id: 1n,
       bet: true,
-      randomness: Fr.random().toBigInt(),
+      randomness: RANDOMNESS_ARR[i],
     });
 
     betNotes.push(betNote);
