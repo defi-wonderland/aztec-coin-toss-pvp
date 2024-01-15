@@ -239,13 +239,13 @@ contract CoinToss {
     }
 
     /////////////////////////////////////////////////////////////////////
-    //                   Public external functions                    //
+    //                   Public internal functions                    //
     /////////////////////////////////////////////////////////////////////
 
     /// @notice         Starts a new round only when the previous round already left the betting phase
     /// @custom:privacy public
     #[aztec(public)]
-    fn start_next_round() {
+    internal fn _start_next_round(encrypted_zero_C1_field: [Field;2], encrypted_zero_C2_field: [Field;2]) {
         let timestamp = context.timestamp();
         let phase_length = storage.phase_length.read();
 
@@ -258,11 +258,14 @@ contract CoinToss {
         let next_round_id = current_round_id + 1;
         storage.round_id.write(next_round_id);
         storage.rounds.at(next_round_id).write(RoundData::new(Phase::BETTING, (timestamp + phase_length) as u120, 0, 0));
-    }
 
-    /////////////////////////////////////////////////////////////////////
-    //                   Public internal functions                    //
-    /////////////////////////////////////////////////////////////////////
+        let intial_encrypted_tails = ElgamalAffinePoints::new(
+            AffinePoint::deserialize(encrypted_zero_C1_field),
+            AffinePoint::deserialize(encrypted_zero_C2_field)
+        );
+
+        storage.number_of_tails.at(next_round_id).write(intial_encrypted_tails);
+    }
 
     /// @notice         Ends the bet phase
     /// @custom:privacy public internal
@@ -403,7 +406,6 @@ contract CoinToss {
         let test_var = new_tails_encrypted_count.serialize();
         debug_log_format(" ================ new_tails_encrypted_count: {0} {1} {2} {3} ================", [test_var[0], test_var[1], test_var[2], test_var[3]]);
 
-
         storage.number_of_tails.at(round_id).write(new_tails_encrypted_count);
     }
 
@@ -428,6 +430,24 @@ contract CoinToss {
     /////////////////////////////////////////////////////////////////////
     //                   Private external functions                    //
     /////////////////////////////////////////////////////////////////////
+
+    #[aztec(private)]
+    fn start_next_round(randomness: Field) {
+        let config_note = storage.config.get_note();
+        let divinity_bjj_key = config_note.divinity_bjj_public_key;
+
+        let (encrypted_bet_c1, encrypted_bet_c2) = bjj::exp_elgamal_encrypt(divinity_bjj_key.point, 0 as u40, randomness);
+
+        let serialized_calldata = [
+            encrypted_bet_c1.x,
+            encrypted_bet_c1.y,
+            encrypted_bet_c2.x,
+            encrypted_bet_c2.y
+        ];
+
+        let selector_update_bet_stats = compute_selector("_start_next_round([Field;2],[Field;2])");
+        context.call_public_function(context.this_address(), selector_update_bet_stats, serialized_calldata);
+    } 
 
     /// @notice         Creates a bet note for the user
     /// @custom:privacy private
@@ -460,7 +480,7 @@ contract CoinToss {
         let selector_increase_bettors = compute_selector("_increase_bettors(Field)");
         context.call_public_function(context.this_address(), selector_increase_bettors, [round_id]);
 
-//TODO: in another private fn for gorgeous-er code? (needs call_private_function tho -> gates count?)
+        //TODO: in another private fn for gorgeous-er code? (needs call_private_function tho -> gates count?)
         let divinity_bjj_key = config_note.divinity_bjj_public_key;
 
         let (encrypted_bet_c1, encrypted_bet_c2) = bjj::exp_elgamal_encrypt(divinity_bjj_key.point, bet as u40, bet_randomness);
