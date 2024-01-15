@@ -1,6 +1,6 @@
 use dep::aztec::types::type_serialization::TypeSerializationInterface;
 use dep::std::ec::tecurve::affine::Point;
-use dep::noir_elgamal;
+use dep::bjj;
 
 // (x,y)
 global AFFINE_POINT_SERIALIZED_LEN = 2;
@@ -30,7 +30,7 @@ impl AffinePoint {
     }
 
     fn add(self, other: Self) -> Self {
-        let bjj_affine = noir_elgamal::get_affine_curve();
+        let bjj_affine = bjj::get_affine_curve();
 
         Self {
             point: bjj_affine.add(self.point, other.point)

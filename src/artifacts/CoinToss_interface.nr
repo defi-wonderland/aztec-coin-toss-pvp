@@ -4,6 +4,32 @@ use dep::std;
 use dep::aztec::context::{ PrivateContext, PublicContext };
 use dep::protocol_types::constants::RETURN_VALUES_LENGTH;
 
+struct DivinityAddressOracleCallbackStruct {
+  address: Field,
+}
+
+struct EncryptedTailSumRollStruct {
+  C1: C1EncryptedTailSumRollStruct,
+  C2: C2EncryptedTailSumRollStruct,
+}
+
+struct C1EncryptedTailSumRollStruct {
+  point: PointC1EncryptedTailSumRollStruct,
+}
+
+struct PointC1EncryptedTailSumRollStruct {
+  x: Field,
+  y: Field,
+}
+
+struct C2EncryptedTailSumRollStruct {
+  point: PointC2EncryptedTailSumRollStruct,
+}
+
+struct PointC2EncryptedTailSumRollStruct {
+  x: Field,
+  y: Field,
+}
 
 
 // Interface for calling CoinToss functions from a private context
@@ -64,9 +90,10 @@ impl CoinTossPrivateContextInterface {
     self,
     context: &mut PrivateContext,
     answer: [Field;3],
-    data: [Field;5]
+    data: [Field;5],
+    divinity_address: DivinityAddressOracleCallbackStruct
   ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 8];
+    let mut serialized_args = [0; 9];
     serialized_args[0] = answer[0];
     serialized_args[1] = answer[1];
     serialized_args[2] = answer[2];
@@ -75,8 +102,9 @@ impl CoinTossPrivateContextInterface {
     serialized_args[5] = data[2];
     serialized_args[6] = data[3];
     serialized_args[7] = data[4];
+    serialized_args[8] = divinity_address.address;
 
-    context.call_private_function(self.address, 0xc25e879f, serialized_args)
+    context.call_private_function(self.address, 0x3d2d23ee, serialized_args)
   }
   
 
@@ -98,13 +126,18 @@ impl CoinTossPrivateContextInterface {
     self,
     context: &mut PrivateContext,
     round_id: Field,
-    oracle_nonce: Field
+    oracle_nonce: Field,
+    encrypted_tail_sum: EncryptedTailSumRollStruct
   ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 2];
+    let mut serialized_args = [0; 6];
     serialized_args[0] = round_id;
     serialized_args[1] = oracle_nonce;
+    serialized_args[2] = encrypted_tail_sum.C1.point.x;
+    serialized_args[3] = encrypted_tail_sum.C1.point.y;
+    serialized_args[4] = encrypted_tail_sum.C2.point.x;
+    serialized_args[5] = encrypted_tail_sum.C2.point.y;
 
-    context.call_private_function(self.address, 0xd80c5f82, serialized_args)
+    context.call_private_function(self.address, 0x40008142, serialized_args)
   }
   
 

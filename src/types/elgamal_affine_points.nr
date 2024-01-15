@@ -48,7 +48,7 @@ impl ElgamalAffinePoints {
 
     // todo: implement as trait when they are supported
     fn eq(self, second: ElgamalAffinePoints) -> bool {
-        self.C1.eq(second.C1) && self.C2.eq(second.C2)
+        self.C1.eq(second.C1) * self.C2.eq(second.C2)
     }
 }
 
