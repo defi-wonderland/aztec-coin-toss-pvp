@@ -584,7 +584,7 @@ describe("E2E Coin Toss", () => {
         )
         .simulate();
       await expect(callbackTx).rejects.toThrow(
-        "(JSON-RPC PROPAGATED) Assertion failed: Caller is not the oracle 'caller == oracle.address'"
+        'divinity_address_config.address == divinity_address.address, "Caller is not the designated divinity"'
       );
     });
   });
