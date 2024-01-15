@@ -396,15 +396,8 @@ contract CoinToss {
         );
 
         let current_tails_encrypted_count = storage.number_of_tails.at(round_id).read();    
-        // TODO:REMOVE THIS IS FOR TEST
-        let serialized_current_count = current_tails_encrypted_count.serialize();
-        debug_log_format(" ================ BET_TO_ADD: {0} {1} {2} {3} ================", [encrypted_bet_C1_field[0], encrypted_bet_C1_field[1], encrypted_bet_C2_field[0], encrypted_bet_C2_field[1]]);
-        debug_log_format(" ================ CURRENT_ENCRYPTED_COUNT: {0} {1} {2} {3} ================", [serialized_current_count[0], serialized_current_count[1], serialized_current_count[2], serialized_current_count[3]]);
 
         let new_tails_encrypted_count = current_tails_encrypted_count.add(encrypted_tails_to_add);
-        // TODO:REMOVE THIS IS FOR TEST
-        let test_var = new_tails_encrypted_count.serialize();
-        debug_log_format(" ================ new_tails_encrypted_count: {0} {1} {2} {3} ================", [test_var[0], test_var[1], test_var[2], test_var[3]]);
 
         storage.number_of_tails.at(round_id).write(new_tails_encrypted_count);
     }
