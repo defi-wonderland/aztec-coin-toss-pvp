@@ -94,6 +94,9 @@ export class CoinTossContract extends ContractBase {
     /** _set_result(caller: field, round_id: field, answer: array, divinity_cum_sum: array, divinity_plain_embedded: array, divinity_public_key: array) */
     _set_result: ((caller: FieldLike, round_id: FieldLike, answer: FieldLike[], divinity_cum_sum: FieldLike[], divinity_plain_embedded: FieldLike[], divinity_public_key: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** _start_next_round(encrypted_zero_C1_field: array, encrypted_zero_C2_field: array) */
+    _start_next_round: ((encrypted_zero_C1_field: FieldLike[], encrypted_zero_C2_field: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** _update_cumsum(round_id: field, encrypted_bet_C1_field: array, encrypted_bet_C2_field: array) */
     _update_cumsum: ((round_id: FieldLike, encrypted_bet_C1_field: FieldLike[], encrypted_bet_C2_field: FieldLike[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -151,7 +154,7 @@ export class CoinTossContract extends ContractBase {
     /** roll(round_id: field, oracle_nonce: field, encrypted_tail_sum: struct) */
     roll: ((round_id: FieldLike, oracle_nonce: FieldLike, encrypted_tail_sum: { C1: { point: { x: FieldLike, y: FieldLike } }, C2: { point: { x: FieldLike, y: FieldLike } } }) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
-    /** start_next_round() */
-    start_next_round: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+    /** start_next_round(randomness: field) */
+    start_next_round: ((randomness: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
   };
 }

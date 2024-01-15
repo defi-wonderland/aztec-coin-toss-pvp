@@ -121,11 +121,13 @@ impl CoinTossPrivateContextInterface {
 
   pub fn start_next_round(
     self,
-    context: &mut PrivateContext
-  ) {
-    let mut serialized_args = [0; 0];
+    context: &mut PrivateContext,
+    randomness: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 1];
+    serialized_args[0] = randomness;
 
-    context.call_public_function(self.address, 0xaaa007bc, serialized_args)
+    context.call_private_function(self.address, 0x25e0e215, serialized_args)
   }
   
 }
@@ -143,15 +145,6 @@ impl CoinTossPublicContextInterface {
       Self {
           address,
       }
-  }
-  
-  pub fn start_next_round(
-    self,
-    context: PublicContext
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 0];
-
-    context.call_public_function(self.address, 0xaaa007bc, serialized_args)
   }
   
 }
