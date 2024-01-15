@@ -535,8 +535,8 @@ describe("E2E Coin Toss", () => {
         .withWallet(divinity)
         .methods.submit_answer(roundId, deployer.getAddress(), [
           betResult,
-          winners,
           divinityPrivateKey,
+          winners,
         ])
         .send()
         .wait();
