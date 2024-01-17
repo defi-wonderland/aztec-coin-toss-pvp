@@ -652,10 +652,10 @@ describe("E2E Coin Toss", () => {
     it("reverts when a user tries to claim more than claimAmount", async () => {
       const claimTx = coinToss
         .withWallet(user2)
-        .methods.claim(roundId, claimAmount + 1n, bets[0].randomness)
+        .methods.claim(roundId, claimAmount + 1n, bets[1].randomness)
         .simulate();
       await expect(claimTx).rejects.toThrow(
-        "(JSON-RPC PROPAGATED) Assertion failed: Claim amount mismatch 'claimAmount == amount as u120'"
+        "(JSON-RPC PROPAGATED) Assertion failed: Claim amount mismatch 'claim_amount == amount as u120'"
       );
     });
 
@@ -666,7 +666,7 @@ describe("E2E Coin Toss", () => {
     it("allows all the winners to claim", async () => {
       const receipt = await coinToss
         .withWallet(user2)
-        .methods.claim(roundId, claimAmount, bets[0].randomness)
+        .methods.claim(roundId, claimAmount, bets[1].randomness)
         .send()
         .wait();
       expect(receipt.status).toBe(TxStatus.MINED);
