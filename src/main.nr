@@ -71,7 +71,7 @@ contract CoinToss {
     };
 
     use dep::std::option::Option;
-    use dep::bjj;
+    use dep::noir_elgamal;
 
     use dep::std;
     use dep::std::ec::tecurve::affine::Curve as AffineCurve;
@@ -317,8 +317,8 @@ contract CoinToss {
         let oracle = storage.oracle_address.read();
         let timestamp = context.timestamp() as u120;
         let phase_length = storage.phase_length.read() as u120;
-        let bjj_affine = bjj::get_affine_curve();
-        let base_pt = bjj::get_base_point();
+        let bjj_affine = noir_elgamal::get_affine_curve();
+        let base_pt = noir_elgamal::get_base_point();
 
         let coin_toss_result = answer[0] as bool;
         let bet_sum_plaintext = answer[1] as u40;
@@ -406,16 +406,11 @@ contract CoinToss {
     /// @custom:privacy public internal
     /// @param          encrypted_tail_sum The encrypted tail sum
     #[aztec(public)]
-    // TODO: change name
     internal fn _validate_encrypted_tail_sum(encrypted_tail_sum_test: [Field;4]) {
         let round_id = storage.round_id.read();
         let encrypted_tail_sum = ElgamalAffinePoints::deserialize(encrypted_tail_sum_test);
         let encrypted_tails_count = storage.number_of_tails.at(round_id).read();
-        // TODO: REMOVE THIS IS JUST FOR DEBUGGING
-        let serialized = encrypted_tails_count.serialize();
-        debug_log_format(" ================ encrypted_tail_sum: {0} {1} {2} {3} ================", [encrypted_tail_sum_test[0], encrypted_tail_sum_test[1], encrypted_tail_sum_test[2], encrypted_tail_sum_test[3]]);
-        debug_log_format(" ================ encrypted_tails_count: {0} {1} {2} {3} ================ ", [serialized[0], serialized[1], serialized[2], serialized[3]]);
-        
+
         assert(encrypted_tails_count.eq(encrypted_tail_sum), "Encrypted tail sum mismatch");
     }
     
@@ -429,7 +424,7 @@ contract CoinToss {
         let config_note = storage.config.get_note();
         let divinity_bjj_key = config_note.divinity_bjj_public_key;
 
-        let (encrypted_bet_c1, encrypted_bet_c2) = bjj::exp_elgamal_encrypt(divinity_bjj_key.point, 0 as u40, randomness);
+        let (encrypted_bet_c1, encrypted_bet_c2) = noir_elgamal::exp_elgamal_encrypt(divinity_bjj_key.point, 0 as u40, randomness);
 
         let serialized_calldata = [
             encrypted_bet_c1.x,
@@ -476,7 +471,7 @@ contract CoinToss {
         //TODO: in another private fn for gorgeous-er code? (needs call_private_function tho -> gates count?)
         let divinity_bjj_key = config_note.divinity_bjj_public_key;
 
-        let (encrypted_bet_c1, encrypted_bet_c2) = bjj::exp_elgamal_encrypt(divinity_bjj_key.point, bet as u40, bet_randomness);
+        let (encrypted_bet_c1, encrypted_bet_c2) = noir_elgamal::exp_elgamal_encrypt(divinity_bjj_key.point, bet as u40, bet_randomness);
 
         let serialized_calldata = [
             round_id,
@@ -545,8 +540,8 @@ contract CoinToss {
 
         assert(divinity_address_config.address == divinity_address.address, "Caller is not the designated divinity");
 
-        let divinity_public_key: Point = bjj::priv_to_pub_key(private_key);
-        let divinity_plain_embedded: Point = bjj::exp_elgamal_decrypt(private_key, divinity_cumsum);
+        let divinity_public_key: Point = noir_elgamal::priv_to_pub_key(private_key);
+        let divinity_plain_embedded: Point = noir_elgamal::exp_elgamal_decrypt(private_key, divinity_cumsum);
 
         let selector = compute_selector("_set_result(Field,Field,[Field;2],[Field;4],[Field;2],[Field;2])");
         context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, coin_toss_result, bet_sum_plaintext, data[1], data[2], data[3], data[4], divinity_plain_embedded.x, divinity_plain_embedded.y, divinity_public_key.x, divinity_public_key.y]);
