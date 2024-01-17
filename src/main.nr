@@ -16,9 +16,10 @@ contract CoinToss {
         PrivateOraclePrivateContextInterface, 
     };
 
+    use dep::aztec::oracle::debug_log::{ debug_log, debug_log_field, debug_log_format };
+
     use crate::types::{
         bet_note::{BetNote, BetNoteMethods, BET_NOTE_LEN},
-        reveal_note::{RevealNote, RevealNoteMethods, REVEAL_NOTE_LEN},
         config_note::{ConfigNote, ConfigNoteMethods, CONFIG_NOTE_LEN},
         round_data::{RoundData, RoundDataSerializationMethods, ROUND_DATA_SERIALIZED_LEN, Phase},
         token::{
@@ -56,6 +57,7 @@ contract CoinToss {
         },
         oracle::{
             get_public_key::get_public_key,
+            get_secret_key::get_secret_key,
             rand::rand
         },
         selector::compute_selector,
@@ -69,7 +71,7 @@ contract CoinToss {
     };
 
     use dep::std::option::Option;
-    use dep::noir_elgamal;
+    use dep::bjj;
 
     use dep::std;
     use dep::std::ec::tecurve::affine::Curve as AffineCurve;
@@ -91,9 +93,8 @@ contract CoinToss {
     global ROUND_DATA_SLOT = 8;
     global CONFIG_NOTE_SLOT = 9;
     global BETS_SLOT = 10;
-    global REVEALS_SLOT = 11;
-    global NUMBER_OF_TAILS_SLOT = 12;
-    global DIVINITY_PUBLIC_KEY_SLOT = 13;
+    global NUMBER_OF_TAILS_SLOT = 11;
+    global DIVINITY_PUBLIC_KEY_SLOT = 12;
 
     /// @notice The storage of the contract
     /// @member round_id The id of the current round
@@ -108,7 +109,6 @@ contract CoinToss {
     /// @member divinity_bjj_public_key The divinity public key on baby jubjub curve (afffine)
     /// @member config The config note, containing the divinity address, the private oracle address, the token address and the bet amount
     /// @member bets The set of bet notes (ie active bets)
-    /// @member reveals The set of reveal notes
     struct Storage {
         ////////////////////////////// public //////////////////////////
         round_id: PublicState<Field, FIELD_SERIALIZED_LEN>,
@@ -125,7 +125,6 @@ contract CoinToss {
         ///////////////////////////// private //////////////////////////
         config: ImmutableSingleton<ConfigNote, CONFIG_NOTE_LEN>,
         bets: Set<BetNote, BET_NOTE_LEN>,
-        reveals: Set<RevealNote, REVEAL_NOTE_LEN>,
     } 
 
     impl Storage {
@@ -183,7 +182,6 @@ contract CoinToss {
                     ConfigNoteMethods,
                 ),
                 bets: Set::new(context, BETS_SLOT, BetNoteMethods),
-                reveals: Set::new(context, REVEALS_SLOT, RevealNoteMethods),
             }
         }
     }
@@ -241,13 +239,13 @@ contract CoinToss {
     }
 
     /////////////////////////////////////////////////////////////////////
-    //                   Public external functions                    //
+    //                   Public internal functions                    //
     /////////////////////////////////////////////////////////////////////
 
     /// @notice         Starts a new round only when the previous round already left the betting phase
     /// @custom:privacy public
     #[aztec(public)]
-    fn start_next_round() {
+    internal fn _start_next_round(encrypted_zero_C1_field: [Field;2], encrypted_zero_C2_field: [Field;2]) {
         let timestamp = context.timestamp();
         let phase_length = storage.phase_length.read();
 
@@ -255,41 +253,19 @@ contract CoinToss {
         if(current_round_id != 0) {
             /// Checks that the previous round is finished
             let current_round_data = storage.rounds.at(storage.round_id.read()).read();
-            assert(current_round_data.phase >= Phase::REVEAL, "Current round not finished");
+            assert(current_round_data.phase == Phase::CLAIM, "Current round not finished");
         }
         let next_round_id = current_round_id + 1;
         storage.round_id.write(next_round_id);
-        storage.rounds.at(next_round_id).write(RoundData::new(Phase::BETTING, (timestamp + phase_length) as u120, 0, 0, 0));
+        storage.rounds.at(next_round_id).write(RoundData::new(Phase::BETTING, (timestamp + phase_length) as u120, 0, 0));
+
+        let intial_encrypted_tails = ElgamalAffinePoints::new(
+            AffinePoint::deserialize(encrypted_zero_C1_field),
+            AffinePoint::deserialize(encrypted_zero_C2_field)
+        );
+
+        storage.number_of_tails.at(next_round_id).write(intial_encrypted_tails);
     }
-
-    /// @notice         Ends the reveal phase when enough time has passed
-    /// @custom:privacy public
-    #[aztec(public)]
-    fn end_reveal_phase() {
-        let current_round_id = storage.round_id.read(); 
-        let current_round_data = storage.rounds.at(current_round_id).read();
-        let number_of_bettors = current_round_data.bettors;
-        let number_of_winners = current_round_data.reveals_count;
-        let timestamp = context.timestamp() as u120;
-
-        /// Checks that the current round is in the reveal phase and that enough time has passed
-        assert(current_round_data.phase == Phase::REVEAL, "Reveal phase over");
-        assert(timestamp >= current_round_data.current_phase_end, "Reveal phase not finished");
-        
-        let bet_amount = storage.bet_amount.read() as u120;
-        /// Calculates the claim amount based on the number of bettors and winners
-        let claim_amount = number_of_bettors * bet_amount / number_of_winners;
-
-        let timestamp = context.timestamp() as u120;
-        let phase_length = storage.phase_length.read() as u120;
-
-        let updated_round_data = RoundData::new(Phase::CLAIM, (timestamp + phase_length) as u120, number_of_winners, number_of_bettors, claim_amount);
-        storage.rounds.at(current_round_id).write(updated_round_data);
-    }
-
-    /////////////////////////////////////////////////////////////////////
-    //                   Public internal functions                    //
-    /////////////////////////////////////////////////////////////////////
 
     /// @notice         Ends the bet phase
     /// @custom:privacy public internal
@@ -310,7 +286,7 @@ contract CoinToss {
         assert(timestamp >= current_round_data.current_phase_end, "Bet phase not finished");
 
         // Set state to AWAITING_ANSWER and update the end phase timestamp
-        let new_round_data = RoundData::new(Phase::AWAITING_ANSWER, (timestamp + phase_length) as u120, 0, current_round_data.bettors, 0);
+        let new_round_data = RoundData::new(Phase::AWAITING_ANSWER, (timestamp + phase_length) as u120, current_round_data.bettors, 0);
         storage.rounds.at(current_round_id).write(new_round_data);
     }
 
@@ -325,7 +301,7 @@ contract CoinToss {
 
         /// Checks that the current round is in the betting phase
         let current_round_data = storage.rounds.at(current_round_id).read();
-        assert(current_round_data.phase >= Phase::BETTING, "Betting phase over");
+        assert(current_round_data.phase == Phase::BETTING, "Betting phase over");
 
         /// Adds a bettor to the current round
         let updated_round_data = current_round_data.add_bettor();
@@ -337,10 +313,32 @@ contract CoinToss {
     /// @param          caller The caller of the function (the oracle)
     /// @param          round_id The id of the current round
     #[aztec(public)]
-    internal fn _set_result(caller: Field, round_id: Field, answer: Field) {
+    internal fn _set_result(caller: Field, round_id: Field, answer: [Field;2], divinity_cum_sum: [Field;4], divinity_plain_embedded: [Field;2], divinity_public_key: [Field;2]) {
         let oracle = storage.oracle_address.read();
         let timestamp = context.timestamp() as u120;
         let phase_length = storage.phase_length.read() as u120;
+        let bjj_affine = bjj::get_affine_curve();
+        let base_pt = bjj::get_base_point();
+
+        let coin_toss_result = answer[0] as bool;
+        let bet_sum_plaintext = answer[1] as u40;
+        let divinity_cumsum = ElgamalAffinePoints::deserialize(divinity_cum_sum);
+        let divinity_public_key = AffinePoint::deserialize(divinity_public_key);
+        let divinity_plain_embedded = AffinePoint::deserialize(divinity_plain_embedded);
+
+        // get the public_key from storage and compare it to the passed in one
+        let divinity_bjj_key = storage.divinity_bjj_public_key.read();
+        assert(divinity_bjj_key.eq(divinity_public_key));
+
+        // check that the passed in encrypted sum is the same as in storage
+        let encrypted_cumsum = storage.number_of_tails.at(round_id).read();
+        assert(divinity_cumsum.eq(encrypted_cumsum));
+
+        let expected_plain_embedded: Point = bjj_affine.mul(bet_sum_plaintext as Field, base_pt);
+        let expected_plain_embedded: AffinePoint = AffinePoint::new(expected_plain_embedded);
+        assert(expected_plain_embedded.eq(divinity_plain_embedded));
+        
+        // if tails won, update it one way, otherwise calculate the other way
 
         /// Checks that the caller is the oracle
         assert(caller == oracle.address, "Caller is not the oracle");
@@ -353,34 +351,17 @@ contract CoinToss {
         let current_round_data = storage.rounds.at(current_round_id).read();
         assert(current_round_data.phase == Phase::AWAITING_ANSWER, "Not in awaiting answer phase");
 
-        let new_round_data = RoundData::new(Phase::REVEAL, (timestamp + phase_length) as u120, 0, current_round_data.bettors, 0);
+        let bet_amount = storage.bet_amount.read() as u120;
+        let number_of_bettors = current_round_data.bettors;
+        let number_of_winners = if coin_toss_result { bet_sum_plaintext } else { number_of_bettors - bet_sum_plaintext };
+        let claim_amount = number_of_bettors as u120 * bet_amount / number_of_winners as u120;
+
+        // TODO: rounds are not resetted, therefore not checekd, does it make sense to do phase_end = timestamp + phase_length here?
+        let new_round_data = RoundData::new(Phase::CLAIM, (timestamp + phase_length) as u120, current_round_data.bettors, claim_amount);
         storage.rounds.at(round_id).write(new_round_data);
 
         /// Updates the result mapping
-        storage.results.at(round_id).write(answer as bool);
-    }
-
-    /// @notice         Increases the number of reveals
-    /// @custom:privacy public internal
-    /// @param          round_id The id of the current round
-    /// @param          user_bet The bet of the user
-    #[aztec(public)]
-    internal fn _increase_reveals(round_id: Field, user_bet: Field) {
-        let timestamp = context.timestamp() as u120;
-
-        let round_data = storage.rounds.at(round_id).read();
-
-        /// Checks that the round is in the reveal phase and is not over
-        assert(round_data.phase == Phase::REVEAL, "Reveal phase over");
-        assert(timestamp < round_data.current_phase_end, "Reveal phase finished");
-
-        let results = storage.results.at(round_id).read();
-        /// Checks that the user bet matches the result
-        assert(results == user_bet as bool, "User bet does not match result");
-
-        /// Adds a revealer to the current round
-        let updated_round_data = round_data.increase_reveal_count();
-        storage.rounds.at(round_id).write(updated_round_data);
+        storage.results.at(round_id).write(coin_toss_result);
     }
 
     /// @notice         Shields the winnings back to the user
@@ -388,8 +369,16 @@ contract CoinToss {
     /// @param          round_id The id of the current round
     /// @param          amount The amount to claim for winning the round
     #[aztec(public)]
-    internal fn _validate_claim(round_id: Field, amount: Field) {
+    internal fn _validate_claim(round_id: Field, amount: Field, user_bet: Field) {
         let round_data = storage.rounds.at(round_id).read();
+
+        /// Checks that the round is in the claim phase
+        assert(round_data.phase == Phase::CLAIM, "Not in claim phase");
+
+        let results = storage.results.at(round_id).read();
+        /// Checks that the user bet matches the result
+        assert(results == user_bet as bool, "User bet does not match result");
+
         let claim_amount = round_data.claim_amount;
         assert(claim_amount == amount as u120, "Claim amount mismatch");
     }
@@ -406,8 +395,8 @@ contract CoinToss {
             AffinePoint::deserialize(encrypted_bet_C2_field)
         );
 
-        let current_tails_encrypted_count = storage.number_of_tails.at(round_id).read();
- 
+        let current_tails_encrypted_count = storage.number_of_tails.at(round_id).read();    
+
         let new_tails_encrypted_count = current_tails_encrypted_count.add(encrypted_tails_to_add);
 
         storage.number_of_tails.at(round_id).write(new_tails_encrypted_count);
@@ -417,17 +406,41 @@ contract CoinToss {
     /// @custom:privacy public internal
     /// @param          encrypted_tail_sum The encrypted tail sum
     #[aztec(public)]
-    internal fn _validate_encrypted_tail_sum(encrypted_tail_sum: [Field;4]) {
+    // TODO: change name
+    internal fn _validate_encrypted_tail_sum(encrypted_tail_sum_test: [Field;4]) {
         let round_id = storage.round_id.read();
-        let encrypted_tail_sum = ElgamalAffinePoints::deserialize(encrypted_tail_sum);
+        let encrypted_tail_sum = ElgamalAffinePoints::deserialize(encrypted_tail_sum_test);
         let encrypted_tails_count = storage.number_of_tails.at(round_id).read();
- 
+        // TODO: REMOVE THIS IS JUST FOR DEBUGGING
+        let serialized = encrypted_tails_count.serialize();
+        debug_log_format(" ================ encrypted_tail_sum: {0} {1} {2} {3} ================", [encrypted_tail_sum_test[0], encrypted_tail_sum_test[1], encrypted_tail_sum_test[2], encrypted_tail_sum_test[3]]);
+        debug_log_format(" ================ encrypted_tails_count: {0} {1} {2} {3} ================ ", [serialized[0], serialized[1], serialized[2], serialized[3]]);
+        
         assert(encrypted_tails_count.eq(encrypted_tail_sum), "Encrypted tail sum mismatch");
     }
+    
 
     /////////////////////////////////////////////////////////////////////
     //                   Private external functions                    //
     /////////////////////////////////////////////////////////////////////
+
+    #[aztec(private)]
+    fn start_next_round(randomness: Field) {
+        let config_note = storage.config.get_note();
+        let divinity_bjj_key = config_note.divinity_bjj_public_key;
+
+        let (encrypted_bet_c1, encrypted_bet_c2) = bjj::exp_elgamal_encrypt(divinity_bjj_key.point, 0 as u40, randomness);
+
+        let serialized_calldata = [
+            encrypted_bet_c1.x,
+            encrypted_bet_c1.y,
+            encrypted_bet_c2.x,
+            encrypted_bet_c2.y
+        ];
+
+        let selector_update_bet_stats = compute_selector("_start_next_round([Field;2],[Field;2])");
+        context.call_public_function(context.this_address(), selector_update_bet_stats, serialized_calldata);
+    } 
 
     /// @notice         Creates a bet note for the user
     /// @custom:privacy private
@@ -460,10 +473,10 @@ contract CoinToss {
         let selector_increase_bettors = compute_selector("_increase_bettors(Field)");
         context.call_public_function(context.this_address(), selector_increase_bettors, [round_id]);
 
-//TODO: in another private fn for gorgeous-er code? (needs call_private_function tho -> gates count?)
+        //TODO: in another private fn for gorgeous-er code? (needs call_private_function tho -> gates count?)
         let divinity_bjj_key = config_note.divinity_bjj_public_key;
 
-        let (encrypted_bet_c1, encrypted_bet_c2) = noir_elgamal::exp_elgamal_encrypt(divinity_bjj_key.point, bet as u40, bet_randomness);
+        let (encrypted_bet_c1, encrypted_bet_c2) = bjj::exp_elgamal_encrypt(divinity_bjj_key.point, bet as u40, bet_randomness);
 
         let serialized_calldata = [
             round_id,
@@ -488,11 +501,10 @@ contract CoinToss {
         let oracle = config_note.private_oracle;
         let oracle_contract = PrivateOraclePrivateContextInterface::at(oracle.address);
         let address_this = AztecAddress::new(context.this_address());
-
-
+        let encrypted_sum_serialized = encrypted_tail_sum.serialize();
 
         // Create the question in the oracle
-        let callback = [address_this.address, round_id, 0, 0, 0, 0];
+        let callback = [address_this.address, round_id, encrypted_sum_serialized[0], encrypted_sum_serialized[1], encrypted_sum_serialized[2], encrypted_sum_serialized[3]];
         let __ = oracle_contract.submit_question(
             &mut context,
             FromSubmitQuestionStruct { address: sender.address },
@@ -507,55 +519,37 @@ contract CoinToss {
         let selector = compute_selector("_end_bet_phase(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
 
-        // Validate the encrypted tail sum passed as an arg
-        let encrypted_sum_serialized = encrypted_tail_sum.serialize();
         context.call_public_function(
             context.this_address(), 
-            compute_selector("_validate_encrypted_tail_sum(Field,[Field;4])"), 
-            [round_id, encrypted_sum_serialized[0], encrypted_sum_serialized[1], encrypted_sum_serialized[2], encrypted_sum_serialized[3]]
+            compute_selector("_validate_encrypted_tail_sum([Field;4])"), 
+            [encrypted_sum_serialized[0], encrypted_sum_serialized[1], encrypted_sum_serialized[2], encrypted_sum_serialized[3]]
         );
     }
 
-    /// @notice         Called by the oracle to set the result of the bet round
+    /// @notice         Called by the oracle to set the result of the bet round and update the claimable amount for the winners
     /// @param          answer The answer of the oracle
-    ///                 answer[0] The randomness
-    ///                 answer[1:2] unused
+    ///                 answer[0] bet result
+    ///                 answer[1] plaintext
+    ///                 answer[2] divinity private_key
     /// @param          data The data of the oracle 
     ///                 data[0]: round_id
-    ///                 data[1:4]: unused
+    ///                 data[1:4]: serialized encrypted_sum
     #[aztec(private)]
-    fn oracle_callback(answer: [Field; 3], data: [Field; 5]) {
+    fn oracle_callback(answer: [Field; 3], data: [Field; 5], divinity_address: AztecAddress) {
         let round_id = data[0];
-        let selector = compute_selector("_set_result(Field,Field,Field)");
-        context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, answer[0]]);
-    }
+        let coin_toss_result = answer[0];
+        let private_key = answer[1];
+        let bet_sum_plaintext = answer[2];
+        let divinity_address_config = storage.config.get_note().divinity;
+        let divinity_cumsum = (Point::new(data[1], data[2]), Point::new(data[3], data[4]));
 
-    /// @notice         Called by the user to reveal that they won
-    /// @custom:privacy private
-    /// @param          round_id The id of the current round
-    /// @param          user_randomness The randomness provided by the user
-    #[aztec(private)]
-    fn reveal(round_id: Field, user_randomness: Field) {
-        let options = NoteGetterOptions::new().select(1, round_id).select(3, user_randomness).set_limit(1);
-        let bet_notes = storage.bets.get_notes(options);
-        let bettor = AztecAddress::new(context.msg_sender());
+        assert(divinity_address_config.address == divinity_address.address, "Caller is not the designated divinity");
 
-        if (bet_notes[0].is_some()) {
-            let bet_note = bet_notes[0].unwrap_unchecked();
-            let user_bet = bet_note.bet;
-            
-            /// Creates a reveal note for the user
-            let mut reveal_note: RevealNote = RevealNote::new(bettor, round_id, user_randomness);
-            storage.reveals.insert(&mut reveal_note, true);
+        let divinity_public_key: Point = bjj::priv_to_pub_key(private_key);
+        let divinity_plain_embedded: Point = bjj::exp_elgamal_decrypt(private_key, divinity_cumsum);
 
-            /// Nullifies the bet note
-            storage.bets.remove(bet_note);
-
-            let selector = compute_selector("_increase_reveals(Field,Field)");
-            context.call_public_function(context.this_address(), selector, [round_id, user_bet as Field]);
-        } else {
-            assert(false, "Bet note not found");
-        }
+        let selector = compute_selector("_set_result(Field,Field,[Field;2],[Field;4],[Field;2],[Field;2])");
+        context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, coin_toss_result, bet_sum_plaintext, data[1], data[2], data[3], data[4], divinity_plain_embedded.x, divinity_plain_embedded.y, divinity_public_key.x, divinity_public_key.y]);
     }
 
     /// @notice         Called by the user to claim their winnings
@@ -563,18 +557,20 @@ contract CoinToss {
     /// @param          round_id The id of the current round
     /// @param          amount The amount to claim for winning the round
     #[aztec(private)]
-    fn claim(round_id: Field, amount: Field) {
+    fn claim(round_id: Field, amount: Field, user_randomness: Field) {
         let config_note = storage.config.get_note();
         let token = TokenPrivateContextInterface::at(config_note.token.address);
         let bettor = AztecAddress::new(context.msg_sender());
         let address_this = AztecAddress::new(context.this_address());
-        let options = NoteGetterOptions::new().select(0, bettor.address).select(1, round_id).set_limit(1);
-        let reveal_notes = storage.reveals.get_notes(options);
+        let options = NoteGetterOptions::new().select(1, round_id).select(3, user_randomness).set_limit(1);
+        let bet_notes = storage.bets.get_notes(options);
 
-        if (reveal_notes[0].is_some()) {
-            let reveal_note = reveal_notes[0].unwrap_unchecked();
-            /// Nullifies the reveal note
-            storage.reveals.remove(reveal_note);
+        if (bet_notes[0].is_some()) {
+            let bet_note = bet_notes[0].unwrap_unchecked();
+            let user_bet = bet_note.bet;
+
+            /// Nullifies the bet note
+            storage.bets.remove(bet_note);
 
             // Shields privately to the user
             let _ = token.shield_private(
@@ -585,10 +581,10 @@ contract CoinToss {
                 0
             );
 
-            let selector = compute_selector("_validate_claim(Field,Field)");
-            context.call_public_function(context.this_address(), selector, [round_id,amount]);
+            let selector = compute_selector("_validate_claim(Field,Field,Field)");
+            context.call_public_function(context.this_address(), selector, [round_id, amount, user_bet as Field]);
         } else {
-            assert(false, "Reveal note not found");
+            assert(false, "Bet note not found");
         }
     }
 
@@ -614,15 +610,6 @@ contract CoinToss {
         storage.bets.view_notes(user_bets_getter_option)
     }
 
-    /// @notice         Gets the reveal notes for an user
-    /// @custom:privacy unconstrained
-    /// @param          start_offset The offset to start from
-    /// @return         The reveal notes (padded with empty notes, up to 10)
-    unconstrained fn get_reveal_notes_unconstrained(start_offset: u32) -> [Option<RevealNote>; 10] {
-        let reveal_notes_getter_option = NoteViewerOptions::new().set_offset(start_offset);
-        storage.reveals.view_notes(reveal_notes_getter_option)
-    }
-
     /// @notice         Compute the note hash and nullifier for a note
     /// @custom:privacy unconstrained
     /// @param          contract_address The contract address (this)
@@ -635,8 +622,6 @@ contract CoinToss {
 
         if(storage_slot == BETS_SLOT) {
             note_utils::compute_note_hash_and_nullifier(BetNoteMethods, note_header, preimage)
-        } else if(storage_slot == REVEALS_SLOT) {
-            note_utils::compute_note_hash_and_nullifier(RevealNoteMethods, note_header, preimage)
         } else {
             note_utils::compute_note_hash_and_nullifier(ConfigNoteMethods, note_header, preimage)
         }
