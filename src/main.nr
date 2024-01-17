@@ -301,7 +301,7 @@ contract CoinToss {
 
         /// Checks that the current round is in the betting phase
         let current_round_data = storage.rounds.at(current_round_id).read();
-        assert(current_round_data.phase >= Phase::BETTING, "Betting phase over");
+        assert(current_round_data.phase == Phase::BETTING, "Betting phase over");
 
         /// Adds a bettor to the current round
         let updated_round_data = current_round_data.add_bettor();
