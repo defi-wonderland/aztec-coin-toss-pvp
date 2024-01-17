@@ -295,10 +295,6 @@ describe("E2E Coin Toss", () => {
       );
     });
 
-    it.skip("reverts if the betting phase is over", async () => {
-      // TODO: Test after functions that advance phases are introduced
-    });
-
     it("mines the transaction", async () => {
       const unshieldNonce = Fr.random();
 
@@ -519,6 +515,46 @@ describe("E2E Coin Toss", () => {
       expect(storedRoundData.bettors).toEqual(BigInt(bettors));
       expect(storedRoundData.claim_amount).toEqual(0n); // not initialized yet
     });
+
+    it("cannot create new bet anymore", async () => {
+      const unshieldNonce = Fr.random();
+
+      // Create authwit so that cointoss can call unshield as the recipient
+      const unshieldAction2 = await token
+        .withWallet(user2)
+        .methods.unshield(
+          user2.getAddress(),
+          coinToss.address,
+          BET_AMOUNT,
+          unshieldNonce
+        );
+      await createAuth(unshieldAction2, user2, coinToss.address);
+
+      // Send the transaction
+      const receipt2 = coinToss
+        .withWallet(user2)
+        .methods.bet(
+          bets[1].bet,
+          bets[1].round_id,
+          bets[1].randomness,
+          unshieldNonce
+        )
+        .simulate();
+      await expect(receipt2).rejects.toThrow(
+        "(JSON-RPC PROPAGATED) Assertion failed: Betting phase over 'current_round_data.phase == Phase::BETTING'"
+      );
+    });
+
+    it("reverts if trying to claim before being in claim phase", async () => {
+      const receipt = coinToss
+        .withWallet(user)
+        .methods.claim(roundId, claimAmount, bets[0].randomness)
+        .simulate();
+
+      await expect(receipt).rejects.toThrow(
+        "(JSON-RPC PROPAGATED) Assertion failed: Not in claim phase 'round_data.phase == Phase::CLAIM'"
+      );
+    });
   });
 
   describe("oracle_callback", () => {
@@ -638,6 +674,17 @@ describe("E2E Coin Toss", () => {
       expect(privateBalanceAfter).toBe(userPrivateBalanceBefore + claimAmount);
     });
 
+    it("reverts if trying to claim twice", async () => {
+      const receipt = coinToss
+        .withWallet(user)
+        .methods.claim(roundId, claimAmount, bets[0].randomness)
+        .simulate();
+
+      await expect(receipt).rejects.toThrow(
+        "(JSON-RPC PROPAGATED) Assertion failed: Bet note not found"
+      );
+    });
+
     it("reverts when trying to claim without a bet note", async () => {
       const randomUser = await createAccount(pxe);
       const claimTx = coinToss
@@ -659,9 +706,16 @@ describe("E2E Coin Toss", () => {
       );
     });
 
-    it.skip("reverts if the phase is not claim", async () => {});
+    it("reverts if the user bet doesnt match the reported result", async () => {
+      const receipt = coinToss
+        .withWallet(user3)
+        .methods.claim(roundId, claimAmount, bets[2].randomness)
+        .simulate();
 
-    it.skip("reverts if the user bet doesnt match the reported result", async () => {});
+      await expect(receipt).rejects.toThrow(
+        "(JSON-RPC PROPAGATED) Assertion failed: User bet does not match result 'results == user_bet as bool'"
+      );
+    });
 
     it("allows all the winners to claim", async () => {
       const receipt = await coinToss
