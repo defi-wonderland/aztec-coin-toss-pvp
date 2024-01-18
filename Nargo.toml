@@ -7,3 +7,4 @@ compiler_version = "^0.18.0"
 [dependencies]
 aztec = { git="https://github.com/AztecProtocol/aztec-packages/", tag="aztec-packages-v0.16.9", directory="yarn-project/aztec-nr/aztec" }
 protocol_types = { git="https://github.com/AztecProtocol/aztec-packages/", tag="aztec-packages-v0.16.9", directory="yarn-project/noir-protocol-circuits/src/crates/types" }
+noir_elgamal = { tag = "v0.2.0", git = "https://github.com/jat9292/noir-elgamal" }

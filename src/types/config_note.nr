@@ -11,6 +11,12 @@ use dep::aztec::{
     types::address::AztecAddress
 };
 
+use dep::std::ec::tecurve::affine::Point;
+
+use crate::types::{
+    affine_point::AffinePoint,
+};
+
 /////////////////////////////////////////////////////////////////////
 //                              Class                              //
 /////////////////////////////////////////////////////////////////////
@@ -23,13 +29,14 @@ use dep::aztec::{
 /// @member header the note header
 struct ConfigNote {
     divinity: AztecAddress,
+    divinity_bjj_public_key: AffinePoint,
     private_oracle: AztecAddress,
     token: AztecAddress,
     bet_amount: Field,
     header: NoteHeader
 }
 
-global CONFIG_NOTE_LEN: Field = 4;
+global CONFIG_NOTE_LEN: Field = 6;
 
 impl ConfigNote {
     
@@ -42,9 +49,10 @@ impl ConfigNote {
     /// @param _private_oracle the address of the private oracle contract
     /// @param _token the address of the token used for betting
     /// @param _amount the amount of tokens to bet
-    pub fn new(_divinity: AztecAddress, _private_oracle: AztecAddress, _token: AztecAddress, _amount: Field) -> Self {
+    pub fn new(_divinity: AztecAddress, _divinity_bjj_public_key: AffinePoint, _private_oracle: AztecAddress, _token: AztecAddress, _amount: Field) -> Self {
         ConfigNote {
             divinity: _divinity,
+            divinity_bjj_public_key: _divinity_bjj_public_key,
             private_oracle: _private_oracle,
             token: _token,
             bet_amount: _amount,
@@ -58,16 +66,17 @@ impl ConfigNote {
 
     /// @notice serialize the note
     fn serialize(self) -> [Field; CONFIG_NOTE_LEN] {
-        [self.divinity.address, self.private_oracle.address, self.token.address, self.bet_amount]
+        [self.divinity.address, self.divinity_bjj_public_key.point.x, self.divinity_bjj_public_key.point.y, self.private_oracle.address, self.token.address, self.bet_amount]
     }
 
     /// @notice deserialize the note
     fn deserialize(preimage: [Field; CONFIG_NOTE_LEN]) -> Self {
         ConfigNote {
             divinity: AztecAddress::new(preimage[0]),
-            private_oracle: AztecAddress::new(preimage[1]),
-            token: AztecAddress::new(preimage[2]),
-            bet_amount: preimage[3],
+            divinity_bjj_public_key: AffinePoint::new(Point::new(preimage[1], preimage[2])),
+            private_oracle: AztecAddress::new(preimage[3]),
+            token: AztecAddress::new(preimage[4]),
+            bet_amount: preimage[5],
             header: NoteHeader::empty(),
         }
     }
@@ -76,6 +85,8 @@ impl ConfigNote {
     fn compute_note_hash(self) -> Field {
         dep::std::hash::pedersen_hash([
             self.divinity.address,
+            self.divinity_bjj_public_key.point.x,
+            self.divinity_bjj_public_key.point.y,
             self.private_oracle.address,
             self.token.address,
             self.bet_amount

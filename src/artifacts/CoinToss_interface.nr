@@ -4,16 +4,31 @@ use dep::std;
 use dep::aztec::context::{ PrivateContext, PublicContext };
 use dep::protocol_types::constants::RETURN_VALUES_LENGTH;
 
-struct OracleAddressInitializeStruct {
+struct DivinityAddressOracleCallbackStruct {
   address: Field,
 }
 
-struct DivinityAddressInitializeStruct {
-  address: Field,
+struct EncryptedTailSumRollStruct {
+  C1: C1EncryptedTailSumRollStruct,
+  C2: C2EncryptedTailSumRollStruct,
 }
 
-struct TokenAddressInitializeStruct {
-  address: Field,
+struct C1EncryptedTailSumRollStruct {
+  point: PointC1EncryptedTailSumRollStruct,
+}
+
+struct PointC1EncryptedTailSumRollStruct {
+  x: Field,
+  y: Field,
+}
+
+struct C2EncryptedTailSumRollStruct {
+  point: PointC2EncryptedTailSumRollStruct,
+}
+
+struct PointC2EncryptedTailSumRollStruct {
+  x: Field,
+  y: Field,
 }
 
 
@@ -51,75 +66,37 @@ impl CoinTossPrivateContextInterface {
     self,
     context: &mut PrivateContext,
     round_id: Field,
-    amount: Field
+    amount: Field,
+    user_randomness: Field
   ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 2];
+    let mut serialized_args = [0; 3];
     serialized_args[0] = round_id;
     serialized_args[1] = amount;
+    serialized_args[2] = user_randomness;
 
-    context.call_private_function(self.address, 0xe642f6a0, serialized_args)
-  }
-  
-
-  pub fn end_reveal_phase(
-    self,
-    context: &mut PrivateContext
-  ) {
-    let mut serialized_args = [0; 0];
-
-    context.call_public_function(self.address, 0x0b2d8f06, serialized_args)
-  }
-  
-
-  pub fn initialize(
-    self,
-    context: &mut PrivateContext,
-    phase_length: Field,
-    bet_amount: Field,
-    oracle_address: OracleAddressInitializeStruct,
-    divinity_address: DivinityAddressInitializeStruct,
-    token_address: TokenAddressInitializeStruct
-  ) {
-    let mut serialized_args = [0; 5];
-    serialized_args[0] = phase_length;
-    serialized_args[1] = bet_amount;
-    serialized_args[2] = oracle_address.address;
-    serialized_args[3] = divinity_address.address;
-    serialized_args[4] = token_address.address;
-
-    context.call_public_function(self.address, 0x7cf3141c, serialized_args)
+    context.call_private_function(self.address, 0xd68b55c1, serialized_args)
   }
   
 
   pub fn oracle_callback(
     self,
     context: &mut PrivateContext,
-    answer: Field,
-    data: [Field;5]
+    answer: [Field;3],
+    data: [Field;5],
+    divinity_address: DivinityAddressOracleCallbackStruct
   ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 6];
-    serialized_args[0] = answer;
-    serialized_args[1] = data[0];
-    serialized_args[2] = data[1];
-    serialized_args[3] = data[2];
-    serialized_args[4] = data[3];
-    serialized_args[5] = data[4];
+    let mut serialized_args = [0; 9];
+    serialized_args[0] = answer[0];
+    serialized_args[1] = answer[1];
+    serialized_args[2] = answer[2];
+    serialized_args[3] = data[0];
+    serialized_args[4] = data[1];
+    serialized_args[5] = data[2];
+    serialized_args[6] = data[3];
+    serialized_args[7] = data[4];
+    serialized_args[8] = divinity_address.address;
 
-    context.call_private_function(self.address, 0x8853c9d8, serialized_args)
-  }
-  
-
-  pub fn reveal(
-    self,
-    context: &mut PrivateContext,
-    round_id: Field,
-    user_randomness: Field
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 2];
-    serialized_args[0] = round_id;
-    serialized_args[1] = user_randomness;
-
-    context.call_private_function(self.address, 0xb8886ebe, serialized_args)
+    context.call_private_function(self.address, 0x3d2d23ee, serialized_args)
   }
   
 
@@ -127,23 +104,30 @@ impl CoinTossPrivateContextInterface {
     self,
     context: &mut PrivateContext,
     round_id: Field,
-    oracle_nonce: Field
+    oracle_nonce: Field,
+    encrypted_tail_sum: EncryptedTailSumRollStruct
   ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 2];
+    let mut serialized_args = [0; 6];
     serialized_args[0] = round_id;
     serialized_args[1] = oracle_nonce;
+    serialized_args[2] = encrypted_tail_sum.C1.point.x;
+    serialized_args[3] = encrypted_tail_sum.C1.point.y;
+    serialized_args[4] = encrypted_tail_sum.C2.point.x;
+    serialized_args[5] = encrypted_tail_sum.C2.point.y;
 
-    context.call_private_function(self.address, 0xd80c5f82, serialized_args)
+    context.call_private_function(self.address, 0x40008142, serialized_args)
   }
   
 
   pub fn start_next_round(
     self,
-    context: &mut PrivateContext
-  ) {
-    let mut serialized_args = [0; 0];
+    context: &mut PrivateContext,
+    randomness: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 1];
+    serialized_args[0] = randomness;
 
-    context.call_public_function(self.address, 0xaaa007bc, serialized_args)
+    context.call_private_function(self.address, 0x25e0e215, serialized_args)
   }
   
 }
@@ -161,45 +145,6 @@ impl CoinTossPublicContextInterface {
       Self {
           address,
       }
-  }
-  
-  pub fn end_reveal_phase(
-    self,
-    context: PublicContext
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 0];
-
-    context.call_public_function(self.address, 0x0b2d8f06, serialized_args)
-  }
-  
-
-  pub fn initialize(
-    self,
-    context: PublicContext,
-    phase_length: Field,
-    bet_amount: Field,
-    oracle_address: OracleAddressInitializeStruct,
-    divinity_address: DivinityAddressInitializeStruct,
-    token_address: TokenAddressInitializeStruct
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 5];
-    serialized_args[0] = phase_length;
-    serialized_args[1] = bet_amount;
-    serialized_args[2] = oracle_address.address;
-    serialized_args[3] = divinity_address.address;
-    serialized_args[4] = token_address.address;
-
-    context.call_public_function(self.address, 0x7cf3141c, serialized_args)
-  }
-  
-
-  pub fn start_next_round(
-    self,
-    context: PublicContext
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 0];
-
-    context.call_public_function(self.address, 0xaaa007bc, serialized_args)
   }
   
 }
