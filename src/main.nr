@@ -106,7 +106,7 @@ contract CoinToss {
     /// @member results Saves the result of each round id
     /// @member rounds Saves the round data for each round id
     /// @member number_of_tails The number of tails in the cumsum of the tails (encrypted)
-    /// @member divinity_bjj_public_key The divinity public key on baby jubjub curve (afffine)
+    /// @member divinity_bjj_public_key The divinity public key on baby jubjub curve (affine)
     /// @member config The config note, containing the divinity address, the private oracle address, the token address and the bet amount
     /// @member bets The set of bet notes (ie active bets)
     struct Storage {
@@ -208,7 +208,7 @@ contract CoinToss {
 
         assert(noir_elgamal::is_valid_subgroup(divinity_bjj_public_key.point), "Invalid divinity public key - are you really in bjj field?");
 
-        // insure function selector remains correct in later dev stage
+        // ensure function selector remains correct in later dev stage
         assert(AFFINE_POINT_SERIALIZED_LEN == 2);
         let selector2 = compute_selector("_init_bjj([Field;2])");
         context.call_public_function(context.this_address(), selector2, divinity_bjj_public_key.serialize());
@@ -232,7 +232,7 @@ contract CoinToss {
 
     /// @notice         Initializes the divinity public key used for decrypting the tail cumsum
     /// @custom:privacy public
-    /// @param          serialized The serialized divinity public key (on baby jubjub curve)
+    /// @param          serialized The serialized divinity public key on the Baby Jubjub curve
     #[aztec(public)]
     internal fn _init_bjj(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) {
         storage.divinity_bjj_public_key.write(AffinePoint::deserialize(serialized));
@@ -244,6 +244,10 @@ contract CoinToss {
 
     /// @notice         Starts a new round only when the previous round already left the betting phase
     /// @custom:privacy public
+    /// @param          encrypted_zero_C1_field C1 field of zero encrypted with the divinity public key and the user-provided randomness
+    ///                 encrypted_zero_C1_field[0:1]: C1 field of zero encrypted with the divinity public key and the user-provided randomness (affine coordinates on the Baby Jubjub curve)
+    /// @param          encrypted_zero_C2_field C2 field of zero encrypted with the divinity public key and the user-provided randomness
+    ///                 encrypted_zero_C2_field[0:1]: C2 field of zero encrypted with the divinity public key and the user-provided randomness (affine coordinates on the Baby Jubjub curve)
     #[aztec(public)]
     internal fn _start_next_round(encrypted_zero_C1_field: [Field;2], encrypted_zero_C2_field: [Field;2]) {
         let timestamp = context.timestamp();
@@ -259,12 +263,12 @@ contract CoinToss {
         storage.round_id.write(next_round_id);
         storage.rounds.at(next_round_id).write(RoundData::new(Phase::BETTING, (timestamp + phase_length) as u120, 0, 0));
 
-        let intial_encrypted_tails = ElgamalAffinePoints::new(
+        let initial_encrypted_tails = ElgamalAffinePoints::new(
             AffinePoint::deserialize(encrypted_zero_C1_field),
             AffinePoint::deserialize(encrypted_zero_C2_field)
         );
 
-        storage.number_of_tails.at(next_round_id).write(intial_encrypted_tails);
+        storage.number_of_tails.at(next_round_id).write(initial_encrypted_tails);
     }
 
     /// @notice         Ends the bet phase
@@ -308,10 +312,21 @@ contract CoinToss {
         storage.rounds.at(round_id).write(updated_round_data);
     }
 
-    /// @notice         Sets the result of the bet round
+    /// @notice         Sets the result of the bet round and establishes the claim amount for the winners of the round
     /// @custom:privacy public internal
+    /// @dev            Most of the parameters passed into this functions are required to perform checks on the integrity of
+    ///                 the values provided by the divinity by comparing them against the values stored in the contract.
     /// @param          caller The caller of the function (the oracle)
     /// @param          round_id The id of the current round
+    /// @param          answer The answer of the oracle
+    ///                 answer[0] bet result
+    ///                 answer[1] number of tails in plaintext
+    /// @param          divinity_cum_sum Serialized encrypted sum of tails provided by the divinity
+    ///                 divinity_cum_sum[0:3]: serialized encrypted_sum
+    /// @param          divinity_plain_embedded Serialized plain_embedded affine point calculated with the values provided by the divinity
+    ///                 divinity_plain_embedded[0:1]: serialized plain_embedded
+    /// @param          divinity_public_key Serialized public key of the divinity.
+    ///                 divinity_public_key[0:1]: serialized public key of the divinity
     #[aztec(public)]
     internal fn _set_result(caller: Field, round_id: Field, answer: [Field;2], divinity_cum_sum: [Field;4], divinity_plain_embedded: [Field;2], divinity_public_key: [Field;2]) {
         let oracle = storage.oracle_address.read();
@@ -338,8 +353,6 @@ contract CoinToss {
         let expected_plain_embedded: AffinePoint = AffinePoint::new(expected_plain_embedded);
         assert(expected_plain_embedded.eq(divinity_plain_embedded));
         
-        // if tails won, update it one way, otherwise calculate the other way
-
         /// Checks that the caller is the oracle
         assert(caller == oracle.address, "Caller is not the oracle");
 
@@ -356,7 +369,7 @@ contract CoinToss {
         let number_of_winners = if coin_toss_result { bet_sum_plaintext } else { number_of_bettors - bet_sum_plaintext };
         let claim_amount = number_of_bettors as u120 * bet_amount / number_of_winners as u120;
 
-        // TODO: rounds are not resetted, therefore not checekd, does it make sense to do phase_end = timestamp + phase_length here?
+        // Claim is the last phase. Its end is never checked. Any value works.
         let new_round_data = RoundData::new(Phase::CLAIM, (timestamp + phase_length) as u120, current_round_data.bettors, claim_amount);
         storage.rounds.at(round_id).write(new_round_data);
 
@@ -368,6 +381,7 @@ contract CoinToss {
     /// @custom:privacy public internal
     /// @param          round_id The id of the current round
     /// @param          amount The amount to claim for winning the round
+    /// @param          user_bet The bet of the user
     #[aztec(public)]
     internal fn _validate_claim(round_id: Field, amount: Field, user_bet: Field) {
         let round_data = storage.rounds.at(round_id).read();
@@ -419,18 +433,21 @@ contract CoinToss {
     //                   Private external functions                    //
     /////////////////////////////////////////////////////////////////////
 
+    /// @notice         Starts a new round only when the previous round already left the betting phase
+    /// @custom:privacy private
+    /// @param          randomness Random number used to encrypt the initial 0 value of number_of_tails to prepare it for additive homomorphic encryption
     #[aztec(private)]
     fn start_next_round(randomness: Field) {
         let config_note = storage.config.get_note();
         let divinity_bjj_key = config_note.divinity_bjj_public_key;
 
-        let (encrypted_bet_c1, encrypted_bet_c2) = noir_elgamal::exp_elgamal_encrypt(divinity_bjj_key.point, 0 as u40, randomness);
+        let (encrypted_zero_c1, encrypted_zero_c2) = noir_elgamal::exp_elgamal_encrypt(divinity_bjj_key.point, 0 as u40, randomness);
 
         let serialized_calldata = [
-            encrypted_bet_c1.x,
-            encrypted_bet_c1.y,
-            encrypted_bet_c2.x,
-            encrypted_bet_c2.y
+            encrypted_zero_c1.x,
+            encrypted_zero_c1.y,
+            encrypted_zero_c2.x,
+            encrypted_zero_c2.y
         ];
 
         let selector_update_bet_stats = compute_selector("_start_next_round([Field;2],[Field;2])");
@@ -468,7 +485,6 @@ contract CoinToss {
         let selector_increase_bettors = compute_selector("_increase_bettors(Field)");
         context.call_public_function(context.this_address(), selector_increase_bettors, [round_id]);
 
-        //TODO: in another private fn for gorgeous-er code? (needs call_private_function tho -> gates count?)
         let divinity_bjj_key = config_note.divinity_bjj_public_key;
 
         let (encrypted_bet_c1, encrypted_bet_c2) = noir_elgamal::exp_elgamal_encrypt(divinity_bjj_key.point, bet as u40, bet_randomness);
@@ -488,6 +504,8 @@ contract CoinToss {
     /// @notice         Calls the oracle to get the result of the bet round
     /// @custom:privacy private
     /// @param          round_id The id of the current round
+    /// @param          oracle_nonce random number used in the authwit to authorize the oracle to call the token escrow function
+    /// @param          encrypted_tail_sum The points composing number_of_tails state variable at the moment of calling this function
     #[aztec(private)]
     fn roll(round_id: Field, oracle_nonce: Field, encrypted_tail_sum: ElgamalAffinePoints) {
         let sender = AztecAddress::new(context.msg_sender());
@@ -551,6 +569,7 @@ contract CoinToss {
     /// @custom:privacy private
     /// @param          round_id The id of the current round
     /// @param          amount The amount to claim for winning the round
+    /// @param          user_randomness The randomness the user used when placing the bet
     #[aztec(private)]
     fn claim(round_id: Field, amount: Field, user_randomness: Field) {
         let config_note = storage.config.get_note();
@@ -666,7 +685,6 @@ contract CoinToss {
     /// @custom:privacy unconstrained
     /// @param          round_id The id of the round this bet was made in
     /// @param          randomness The randomness the user used for this bet in this round
-    /// @param          bet_id The id of the bet
     /// @return         A boolean indicating whether a bet with this combination of fields has been initialized or not
     unconstrained fn is_round_randomness_nullified(round_id: Field, randomness: Field) -> bool {
         BetNote::is_round_randomness_nullified(round_id, randomness)
