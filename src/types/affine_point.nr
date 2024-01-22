@@ -5,8 +5,8 @@ use dep::noir_elgamal;
 // (x,y)
 global AFFINE_POINT_SERIALIZED_LEN = 2;
 
-/// @notice A struct applying the struct composition pattern to extend the Point type
-/// @member point An element representing a point on the Baby Jubjub curve and of type Point. 
+/// @notice A struct composing over the Point struct
+/// @member point<Point> An element representing a point on the Baby Jubjub curve.
 struct AffinePoint {
     point: Point
 }
@@ -20,13 +20,13 @@ impl AffinePoint {
         }
     }
 
-    /// @notice Serializes an AffinePoint into a slice of Field elements
+    /// @notice Serializes an AffinePoint into an array of Field elements
     fn serialize(self) -> [Field; AFFINE_POINT_SERIALIZED_LEN] {
         [self.point.x, self.point.y]
     }
 
-    /// @notice Deserializes a slice of Field elements into an AffinePoint
-    /// @param serialized The slice of Field elements to be deserialized
+    /// @notice Deserializes an array of Field elements into an AffinePoint
+    /// @param serialized The array of Field elements to be deserialized
     pub fn deserialize(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) -> Self {
         Self {
             point: Point {
@@ -57,12 +57,12 @@ impl AffinePoint {
 // impl Eq for AffinePoint {
 // }
 
-/// @notice Deserializes a slice of Field elements into an AffinePoint
-/// @param serialized The slice of Field elements to be deserialized
+/// @notice Deserializes an array of Field elements into an AffinePoint
+/// @param serialized The array of Field elements to be deserialized
 fn deserialize(serialized: [Field; AFFINE_POINT_SERIALIZED_LEN]) -> AffinePoint {
     AffinePoint::deserialize(serialized)
 }
-/// @notice Serializes an AffinePoint into a slice of Field elements
+/// @notice Serializes an AffinePoint into an array of Field elements
 /// @param value The AffinePoint to be serialized
 fn serialize(value: AffinePoint) -> [Field; AFFINE_POINT_SERIALIZED_LEN] {
     AffinePoint::serialize(value)

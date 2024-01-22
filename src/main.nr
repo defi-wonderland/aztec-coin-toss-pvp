@@ -245,9 +245,9 @@ contract CoinToss {
     /// @notice         Starts a new round only when the previous round already left the betting phase
     /// @custom:privacy public
     /// @param          encrypted_zero_C1_field C1 field of zero encrypted with the divinity public key and the user-provided randomness
-    ///                 encrypted_zero_C1_field[0:1]: Affine coordinates of the resulting C1 point in the Baby Jubjub curve
+    ///                 encrypted_zero_C1_field[0:1]: C1 field of zero encrypted with the divinity public key and the user-provided randomness (affine coordinates on the Baby Jubjub curve)
     /// @param          encrypted_zero_C2_field C2 field of zero encrypted with the divinity public key and the user-provided randomness
-    ///                 encrypted_zero_C2_field[0:1]: Affine coordinates of the resulting C2 point in the Baby Jubjub curve
+    ///                 encrypted_zero_C2_field[0:1]: C2 field of zero encrypted with the divinity public key and the user-provided randomness (affine coordinates on the Baby Jubjub curve)
     #[aztec(public)]
     internal fn _start_next_round(encrypted_zero_C1_field: [Field;2], encrypted_zero_C2_field: [Field;2]) {
         let timestamp = context.timestamp();
