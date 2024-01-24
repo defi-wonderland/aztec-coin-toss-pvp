@@ -5,25 +5,24 @@ import {
   computeAuthWitMessageHash,
   computeMessageSecretHash,
   ContractFunctionInteraction,
-  createAccount,
   createPXEClient,
   ExtendedNote,
   Fr,
-  getSandboxAccountsWallets,
   Note,
   PXE,
   TxHash,
   TxStatus,
-  waitForSandbox,
-  getUnsafeSchnorrAccount,
-  Fq
+  Fq,
+  waitForPXE,
+  CompleteAddress
 } from "@aztec/aztec.js";
 
-import { initAztecJs } from "@aztec/aztec.js/init";
 import { BetNote } from "./Notes.js";
 import { CoinTossContract } from "../artifacts/CoinToss.js";
-import { TokenContract } from "../artifacts/token/Token.js";
-import { PrivateOracleContract } from "../artifacts/oracle/PrivateOracle.js";
+import { TokenContract } from "../artifacts/Token.js";
+import { PrivateOracleContract } from "../artifacts/PrivateOracle.js";
+import { createAccount, getInitialTestAccountsWallets } from "@aztec/accounts/testing";
+import { getUnsafeSchnorrAccount } from "@aztec/accounts/single_key";
 
 // Constants
 const CONFIG_SLOT: Fr = new Fr(9);
@@ -39,7 +38,6 @@ const BET_AMOUNT = 1337n;
 
 const PHASE_LENGTH = 10 * 60; // 10 minutes
 
-const PHASE_BET = 1n;
 const PHASE_WAIT_ORACLE_ANSWER = 2n;
 const PHASE_CLAIM = 3n;
 
@@ -108,28 +106,32 @@ let user3: AccountWalletWithPrivateKey;
 let divinity: AccountWalletWithPrivateKey;
 let deployer: AccountWalletWithPrivateKey;
 
-// Setup: Set the sandbox up and get the accounts
+const { PXE_URL = 'http://localhost:8080' } = process.env;
+const { ETH_URL = 'http://localhost:8545' } = process.env;
+
+const setupSandbox = async () => {
+  const pxe = createPXEClient(PXE_URL);
+  await waitForPXE(pxe);
+  return pxe;
+};
+
+// Setup: Set the sandbox
 beforeAll(async () => {
-  const {
-    PXE_URL = "http://localhost:8080",
-    SANDBOX_URL = "http://localhost:8545",
-  } = process.env;
-  pxe = createPXEClient(PXE_URL);
-  cc = await CheatCodes.create(SANDBOX_URL, pxe);
-
-  [, [user, divinity, user2], deployer, user3] = await Promise.all([
-    waitForSandbox(pxe),
-    getSandboxAccountsWallets(pxe),
-    createAccount(pxe),
-    createAccount(pxe),
-  ]);
-  await initAztecJs();
-
+  pxe = await setupSandbox();
+  
+  // Returns only 3 accounts
+  [user, divinity, user2] = await getInitialTestAccountsWallets(pxe);
+  deployer = await createAccount(pxe);
+  user3 = await createAccount(pxe);
+  
   divinity = await getUnsafeSchnorrAccount(
     pxe,
     new Fq(divinityPrivateKey)
-  ).waitDeploy();
-}, 120_000);
+    ).waitDeploy();
+
+  cc = CheatCodes.create(ETH_URL, pxe);
+  }, 120_000);
+
 
 describe("E2E Coin Toss", () => {
   let roundId = 0n;
@@ -210,10 +212,10 @@ describe("E2E Coin Toss", () => {
       .get_token_address_unconstrained()
       .view();
 
-    expect(new Fr(_token.address)).toStrictEqual(token.address);
-    expect(new Fr(_oracle.address)).toStrictEqual(oracle.address);
-    expect(AztecAddress.fromBigInt(_divinity.address)).toStrictEqual(
-      divinity.getAddress()
+    expect(_token).toStrictEqual(token.address.toBigInt());
+    expect(_oracle).toStrictEqual(oracle.address.toBigInt());
+    expect(_divinity).toStrictEqual(
+      divinity.getAddress().toBigInt()
     );
     expect(_betAmount).toBe(BET_AMOUNT);
     expect(Number(_phaseLength)).toBe(PHASE_LENGTH);
@@ -423,6 +425,17 @@ describe("E2E Coin Toss", () => {
             .view({ from: user.getAddress() })
         )[0]._value
       );
+      
+      type ExtendedAddressNote = {
+        inner: bigint
+      }
+
+      const ownerAsBigInt = (bet.owner as unknown as ExtendedAddressNote).inner;
+
+      const expectedBet = {
+        ...bet,
+        owner: AztecAddress.fromBigInt(ownerAsBigInt)
+      }
 
       // Check: Compare the note's data with the expected values
       const betNote: BetNote = {
@@ -432,7 +445,7 @@ describe("E2E Coin Toss", () => {
         randomness: bets[0].randomness,
       };
 
-      expect(bet).toEqual(expect.objectContaining(betNote));
+      expect(expectedBet).toEqual(expect.objectContaining(betNote));
     });
   });
 
@@ -620,7 +633,7 @@ describe("E2E Coin Toss", () => {
         )
         .simulate();
       await expect(callbackTx).rejects.toThrow(
-        "(JSON-RPC PROPAGATED) Assertion failed: Caller is not the designated divinity 'divinity_address_config.address == divinity_address.address'"
+        "(JSON-RPC PROPAGATED) Assertion failed: Caller is not the designated divinity 'divinity_address_config.eq(divinity_address)'"
       );
     });
   });

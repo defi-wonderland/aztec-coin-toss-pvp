@@ -2,150 +2,105 @@
   
 use dep::std;
 use dep::aztec::context::{ PrivateContext, PublicContext };
-use dep::protocol_types::constants::RETURN_VALUES_LENGTH;
-
-struct AccountsBroadcastEscrowNoteForStruct {
-  address: Field,
-}
-
-struct FromBurnStruct {
-  address: Field,
-}
-
-struct FromBurnPublicStruct {
-  address: Field,
-}
+use dep::aztec::protocol_types::{
+  address::AztecAddress,
+  abis::function_selector::FunctionSelector,
+  constants::RETURN_VALUES_LENGTH,
+};
 
 struct FromEscrowStruct {
-  address: Field,
+  inner: Field,
 }
 
 struct OwnerEscrowStruct {
-  address: Field,
+  inner: Field,
 }
 
-struct ToMintPublicStruct {
-  address: Field,
+struct AccountsBroadcastEscrowNoteForStruct {
+  inner: Field,
 }
 
-struct ToRedeemShieldStruct {
-  address: Field,
-}
-
-struct NewAdminSetAdminStruct {
-  address: Field,
-}
-
-struct MinterSetMinterStruct {
-  address: Field,
-}
-
-struct OwnerSettleEscrowStruct {
-  address: Field,
-}
-
-struct RecipientSettleEscrowStruct {
-  address: Field,
-}
-
-struct FromShieldStruct {
-  address: Field,
-}
-
-struct FromShieldPrivateStruct {
-  address: Field,
-}
-
-struct ToShieldPrivateStruct {
-  address: Field,
+struct FromBurnPublicStruct {
+  inner: Field,
 }
 
 struct FromTransferStruct {
-  address: Field,
+  inner: Field,
 }
 
 struct ToTransferStruct {
-  address: Field,
-}
-
-struct FromTransferPublicStruct {
-  address: Field,
-}
-
-struct ToTransferPublicStruct {
-  address: Field,
+  inner: Field,
 }
 
 struct FromUnshieldStruct {
-  address: Field,
+  inner: Field,
 }
 
 struct ToUnshieldStruct {
-  address: Field,
+  inner: Field,
+}
+
+struct FromBurnStruct {
+  inner: Field,
+}
+
+struct ToMintPublicStruct {
+  inner: Field,
+}
+
+struct ToRedeemShieldStruct {
+  inner: Field,
+}
+
+struct MinterSetMinterStruct {
+  inner: Field,
+}
+
+struct FromShieldStruct {
+  inner: Field,
+}
+
+struct OwnerSettleEscrowStruct {
+  inner: Field,
+}
+
+struct RecipientSettleEscrowStruct {
+  inner: Field,
+}
+
+struct FromShieldPrivateStruct {
+  inner: Field,
+}
+
+struct ToShieldPrivateStruct {
+  inner: Field,
+}
+
+struct FromTransferPublicStruct {
+  inner: Field,
+}
+
+struct ToTransferPublicStruct {
+  inner: Field,
+}
+
+struct NewAdminSetAdminStruct {
+  inner: Field,
 }
 
 
 // Interface for calling Token functions from a private context
 struct TokenPrivateContextInterface {
-  address: Field,
+  address: AztecAddress,
 }
 
 impl TokenPrivateContextInterface {
-  pub fn at(address: Field) -> Self {
+  pub fn at(address: AztecAddress) -> Self {
       Self {
           address,
       }
   }
   
-  pub fn broadcast_escrow_note_for(
-    self,
-    context: &mut PrivateContext,
-    accounts: [AccountsBroadcastEscrowNoteForStruct;4],
-    randomness: Field
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 5];
-    serialized_args[0] = accounts[0].address;
-    serialized_args[1] = accounts[1].address;
-    serialized_args[2] = accounts[2].address;
-    serialized_args[3] = accounts[3].address;
-    serialized_args[4] = randomness;
-
-    context.call_private_function(self.address, 0x2426c148, serialized_args)
-  }
-  
-
-  pub fn burn(
-    self,
-    context: &mut PrivateContext,
-    from: FromBurnStruct,
-    amount: Field,
-    nonce: Field
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 3];
-    serialized_args[0] = from.address;
-    serialized_args[1] = amount;
-    serialized_args[2] = nonce;
-
-    context.call_private_function(self.address, 0xd4fcc96e, serialized_args)
-  }
-  
-
-  pub fn burn_public(
-    self,
-    context: &mut PrivateContext,
-    from: FromBurnPublicStruct,
-    amount: Field,
-    nonce: Field
-  ) {
-    let mut serialized_args = [0; 3];
-    serialized_args[0] = from.address;
-    serialized_args[1] = amount;
-    serialized_args[2] = nonce;
-
-    context.call_public_function(self.address, 0xb0e964d5, serialized_args)
-  }
-  
-
   pub fn escrow(
     self,
     context: &mut PrivateContext,
@@ -155,24 +110,12 @@ impl TokenPrivateContextInterface {
     nonce: Field
   ) -> [Field; RETURN_VALUES_LENGTH] {
     let mut serialized_args = [0; 4];
-    serialized_args[0] = from.address;
-    serialized_args[1] = owner.address;
+    serialized_args[0] = from.inner;
+    serialized_args[1] = owner.inner;
     serialized_args[2] = amount;
     serialized_args[3] = nonce;
 
-    context.call_private_function(self.address, 0x54f7b220, serialized_args)
-  }
-  
-
-  pub fn get_escrow(
-    self,
-    context: &mut PrivateContext,
-    randomness: Field
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 1];
-    serialized_args[0] = randomness;
-
-    context.call_private_function(self.address, 0x37785550, serialized_args)
+    context.call_private_function(self.address, FunctionSelector::from_field(0x54f7b220), serialized_args)
   }
   
 
@@ -186,117 +129,40 @@ impl TokenPrivateContextInterface {
     serialized_args[0] = amount;
     serialized_args[1] = secret_hash;
 
-    context.call_public_function(self.address, 0x10763932, serialized_args)
+    context.call_public_function(self.address, FunctionSelector::from_field(0x10763932), serialized_args)
   }
   
 
-  pub fn mint_public(
+  pub fn broadcast_escrow_note_for(
     self,
     context: &mut PrivateContext,
-    to: ToMintPublicStruct,
-    amount: Field
-  ) {
-    let mut serialized_args = [0; 2];
-    serialized_args[0] = to.address;
-    serialized_args[1] = amount;
-
-    context.call_public_function(self.address, 0x6bfd1d5b, serialized_args)
-  }
-  
-
-  pub fn redeem_shield(
-    self,
-    context: &mut PrivateContext,
-    to: ToRedeemShieldStruct,
-    amount: Field,
-    secret: Field
+    accounts: [AccountsBroadcastEscrowNoteForStruct;4],
+    randomness: Field
   ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 5];
+    serialized_args[0] = accounts[0].inner;
+    serialized_args[1] = accounts[1].inner;
+    serialized_args[2] = accounts[2].inner;
+    serialized_args[3] = accounts[3].inner;
+    serialized_args[4] = randomness;
+
+    context.call_private_function(self.address, FunctionSelector::from_field(0x2426c148), serialized_args)
+  }
+  
+
+  pub fn burn_public(
+    self,
+    context: &mut PrivateContext,
+    from: FromBurnPublicStruct,
+    amount: Field,
+    nonce: Field
+  ) {
     let mut serialized_args = [0; 3];
-    serialized_args[0] = to.address;
+    serialized_args[0] = from.inner;
     serialized_args[1] = amount;
-    serialized_args[2] = secret;
+    serialized_args[2] = nonce;
 
-    context.call_private_function(self.address, 0xb77168f2, serialized_args)
-  }
-  
-
-  pub fn set_admin(
-    self,
-    context: &mut PrivateContext,
-    new_admin: NewAdminSetAdminStruct
-  ) {
-    let mut serialized_args = [0; 1];
-    serialized_args[0] = new_admin.address;
-
-    context.call_public_function(self.address, 0x41b90896, serialized_args)
-  }
-  
-
-  pub fn set_minter(
-    self,
-    context: &mut PrivateContext,
-    minter: MinterSetMinterStruct,
-    approve: bool
-  ) {
-    let mut serialized_args = [0; 2];
-    serialized_args[0] = minter.address;
-    serialized_args[1] = approve as Field;
-
-    context.call_public_function(self.address, 0x7f020b80, serialized_args)
-  }
-  
-
-  pub fn settle_escrow(
-    self,
-    context: &mut PrivateContext,
-    owner: OwnerSettleEscrowStruct,
-    recipient: RecipientSettleEscrowStruct,
-    randomness: Field,
-    nonce: Field
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 4];
-    serialized_args[0] = owner.address;
-    serialized_args[1] = recipient.address;
-    serialized_args[2] = randomness;
-    serialized_args[3] = nonce;
-
-    context.call_private_function(self.address, 0x510f50d4, serialized_args)
-  }
-  
-
-  pub fn shield(
-    self,
-    context: &mut PrivateContext,
-    from: FromShieldStruct,
-    amount: Field,
-    secret_hash: Field,
-    nonce: Field
-  ) {
-    let mut serialized_args = [0; 4];
-    serialized_args[0] = from.address;
-    serialized_args[1] = amount;
-    serialized_args[2] = secret_hash;
-    serialized_args[3] = nonce;
-
-    context.call_public_function(self.address, 0x1d24add0, serialized_args)
-  }
-  
-
-  pub fn shield_private(
-    self,
-    context: &mut PrivateContext,
-    from: FromShieldPrivateStruct,
-    to: ToShieldPrivateStruct,
-    amount: Field,
-    nonce: Field
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 4];
-    serialized_args[0] = from.address;
-    serialized_args[1] = to.address;
-    serialized_args[2] = amount;
-    serialized_args[3] = nonce;
-
-    context.call_private_function(self.address, 0x319ca21e, serialized_args)
+    context.call_public_function(self.address, FunctionSelector::from_field(0xb0e964d5), serialized_args)
   }
   
 
@@ -309,30 +175,12 @@ impl TokenPrivateContextInterface {
     nonce: Field
   ) -> [Field; RETURN_VALUES_LENGTH] {
     let mut serialized_args = [0; 4];
-    serialized_args[0] = from.address;
-    serialized_args[1] = to.address;
+    serialized_args[0] = from.inner;
+    serialized_args[1] = to.inner;
     serialized_args[2] = amount;
     serialized_args[3] = nonce;
 
-    context.call_private_function(self.address, 0xb1aa668a, serialized_args)
-  }
-  
-
-  pub fn transfer_public(
-    self,
-    context: &mut PrivateContext,
-    from: FromTransferPublicStruct,
-    to: ToTransferPublicStruct,
-    amount: Field,
-    nonce: Field
-  ) {
-    let mut serialized_args = [0; 4];
-    serialized_args[0] = from.address;
-    serialized_args[1] = to.address;
-    serialized_args[2] = amount;
-    serialized_args[3] = nonce;
-
-    context.call_public_function(self.address, 0x7db8f449, serialized_args)
+    context.call_private_function(self.address, FunctionSelector::from_field(0xb1aa668a), serialized_args)
   }
   
 
@@ -345,12 +193,156 @@ impl TokenPrivateContextInterface {
     nonce: Field
   ) -> [Field; RETURN_VALUES_LENGTH] {
     let mut serialized_args = [0; 4];
-    serialized_args[0] = from.address;
-    serialized_args[1] = to.address;
+    serialized_args[0] = from.inner;
+    serialized_args[1] = to.inner;
     serialized_args[2] = amount;
     serialized_args[3] = nonce;
 
-    context.call_private_function(self.address, 0x78303b89, serialized_args)
+    context.call_private_function(self.address, FunctionSelector::from_field(0x78303b89), serialized_args)
+  }
+  
+
+  pub fn burn(
+    self,
+    context: &mut PrivateContext,
+    from: FromBurnStruct,
+    amount: Field,
+    nonce: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 3];
+    serialized_args[0] = from.inner;
+    serialized_args[1] = amount;
+    serialized_args[2] = nonce;
+
+    context.call_private_function(self.address, FunctionSelector::from_field(0xd4fcc96e), serialized_args)
+  }
+  
+
+  pub fn mint_public(
+    self,
+    context: &mut PrivateContext,
+    to: ToMintPublicStruct,
+    amount: Field
+  ) {
+    let mut serialized_args = [0; 2];
+    serialized_args[0] = to.inner;
+    serialized_args[1] = amount;
+
+    context.call_public_function(self.address, FunctionSelector::from_field(0x6bfd1d5b), serialized_args)
+  }
+  
+
+  pub fn redeem_shield(
+    self,
+    context: &mut PrivateContext,
+    to: ToRedeemShieldStruct,
+    amount: Field,
+    secret: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 3];
+    serialized_args[0] = to.inner;
+    serialized_args[1] = amount;
+    serialized_args[2] = secret;
+
+    context.call_private_function(self.address, FunctionSelector::from_field(0xb77168f2), serialized_args)
+  }
+  
+
+  pub fn set_minter(
+    self,
+    context: &mut PrivateContext,
+    minter: MinterSetMinterStruct,
+    approve: bool
+  ) {
+    let mut serialized_args = [0; 2];
+    serialized_args[0] = minter.inner;
+    serialized_args[1] = approve as Field;
+
+    context.call_public_function(self.address, FunctionSelector::from_field(0x7f020b80), serialized_args)
+  }
+  
+
+  pub fn shield(
+    self,
+    context: &mut PrivateContext,
+    from: FromShieldStruct,
+    amount: Field,
+    secret_hash: Field,
+    nonce: Field
+  ) {
+    let mut serialized_args = [0; 4];
+    serialized_args[0] = from.inner;
+    serialized_args[1] = amount;
+    serialized_args[2] = secret_hash;
+    serialized_args[3] = nonce;
+
+    context.call_public_function(self.address, FunctionSelector::from_field(0x1d24add0), serialized_args)
+  }
+  
+
+  pub fn settle_escrow(
+    self,
+    context: &mut PrivateContext,
+    owner: OwnerSettleEscrowStruct,
+    recipient: RecipientSettleEscrowStruct,
+    randomness: Field,
+    nonce: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 4];
+    serialized_args[0] = owner.inner;
+    serialized_args[1] = recipient.inner;
+    serialized_args[2] = randomness;
+    serialized_args[3] = nonce;
+
+    context.call_private_function(self.address, FunctionSelector::from_field(0x510f50d4), serialized_args)
+  }
+  
+
+  pub fn shield_private(
+    self,
+    context: &mut PrivateContext,
+    from: FromShieldPrivateStruct,
+    to: ToShieldPrivateStruct,
+    amount: Field,
+    nonce: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 4];
+    serialized_args[0] = from.inner;
+    serialized_args[1] = to.inner;
+    serialized_args[2] = amount;
+    serialized_args[3] = nonce;
+
+    context.call_private_function(self.address, FunctionSelector::from_field(0x319ca21e), serialized_args)
+  }
+  
+
+  pub fn transfer_public(
+    self,
+    context: &mut PrivateContext,
+    from: FromTransferPublicStruct,
+    to: ToTransferPublicStruct,
+    amount: Field,
+    nonce: Field
+  ) {
+    let mut serialized_args = [0; 4];
+    serialized_args[0] = from.inner;
+    serialized_args[1] = to.inner;
+    serialized_args[2] = amount;
+    serialized_args[3] = nonce;
+
+    context.call_public_function(self.address, FunctionSelector::from_field(0x7db8f449), serialized_args)
+  }
+  
+
+  pub fn set_admin(
+    self,
+    context: &mut PrivateContext,
+    new_admin: NewAdminSetAdminStruct
+  ) {
+    let mut serialized_args = [0; 1];
+    serialized_args[0] = new_admin.inner;
+
+    context.call_public_function(self.address, FunctionSelector::from_field(0x41b90896), serialized_args)
   }
   
 }
@@ -360,32 +352,16 @@ impl TokenPrivateContextInterface {
 
 // Interface for calling Token functions from a public context
 struct TokenPublicContextInterface {
-  address: Field,
+  address: AztecAddress,
 }
 
 impl TokenPublicContextInterface {
-  pub fn at(address: Field) -> Self {
+  pub fn at(address: AztecAddress) -> Self {
       Self {
           address,
       }
   }
   
-  pub fn burn_public(
-    self,
-    context: PublicContext,
-    from: FromBurnPublicStruct,
-    amount: Field,
-    nonce: Field
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 3];
-    serialized_args[0] = from.address;
-    serialized_args[1] = amount;
-    serialized_args[2] = nonce;
-
-    context.call_public_function(self.address, 0xb0e964d5, serialized_args)
-  }
-  
-
   pub fn mint_private(
     self,
     context: PublicContext,
@@ -396,7 +372,23 @@ impl TokenPublicContextInterface {
     serialized_args[0] = amount;
     serialized_args[1] = secret_hash;
 
-    context.call_public_function(self.address, 0x10763932, serialized_args)
+    context.call_public_function(self.address, FunctionSelector::from_field(0x10763932), serialized_args)
+  }
+  
+
+  pub fn burn_public(
+    self,
+    context: PublicContext,
+    from: FromBurnPublicStruct,
+    amount: Field,
+    nonce: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 3];
+    serialized_args[0] = from.inner;
+    serialized_args[1] = amount;
+    serialized_args[2] = nonce;
+
+    context.call_public_function(self.address, FunctionSelector::from_field(0xb0e964d5), serialized_args)
   }
   
 
@@ -407,22 +399,10 @@ impl TokenPublicContextInterface {
     amount: Field
   ) -> [Field; RETURN_VALUES_LENGTH] {
     let mut serialized_args = [0; 2];
-    serialized_args[0] = to.address;
+    serialized_args[0] = to.inner;
     serialized_args[1] = amount;
 
-    context.call_public_function(self.address, 0x6bfd1d5b, serialized_args)
-  }
-  
-
-  pub fn set_admin(
-    self,
-    context: PublicContext,
-    new_admin: NewAdminSetAdminStruct
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 1];
-    serialized_args[0] = new_admin.address;
-
-    context.call_public_function(self.address, 0x41b90896, serialized_args)
+    context.call_public_function(self.address, FunctionSelector::from_field(0x6bfd1d5b), serialized_args)
   }
   
 
@@ -433,10 +413,10 @@ impl TokenPublicContextInterface {
     approve: bool
   ) -> [Field; RETURN_VALUES_LENGTH] {
     let mut serialized_args = [0; 2];
-    serialized_args[0] = minter.address;
+    serialized_args[0] = minter.inner;
     serialized_args[1] = approve as Field;
 
-    context.call_public_function(self.address, 0x7f020b80, serialized_args)
+    context.call_public_function(self.address, FunctionSelector::from_field(0x7f020b80), serialized_args)
   }
   
 
@@ -449,12 +429,12 @@ impl TokenPublicContextInterface {
     nonce: Field
   ) -> [Field; RETURN_VALUES_LENGTH] {
     let mut serialized_args = [0; 4];
-    serialized_args[0] = from.address;
+    serialized_args[0] = from.inner;
     serialized_args[1] = amount;
     serialized_args[2] = secret_hash;
     serialized_args[3] = nonce;
 
-    context.call_public_function(self.address, 0x1d24add0, serialized_args)
+    context.call_public_function(self.address, FunctionSelector::from_field(0x1d24add0), serialized_args)
   }
   
 
@@ -467,12 +447,24 @@ impl TokenPublicContextInterface {
     nonce: Field
   ) -> [Field; RETURN_VALUES_LENGTH] {
     let mut serialized_args = [0; 4];
-    serialized_args[0] = from.address;
-    serialized_args[1] = to.address;
+    serialized_args[0] = from.inner;
+    serialized_args[1] = to.inner;
     serialized_args[2] = amount;
     serialized_args[3] = nonce;
 
-    context.call_public_function(self.address, 0x7db8f449, serialized_args)
+    context.call_public_function(self.address, FunctionSelector::from_field(0x7db8f449), serialized_args)
+  }
+  
+
+  pub fn set_admin(
+    self,
+    context: PublicContext,
+    new_admin: NewAdminSetAdminStruct
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 1];
+    serialized_args[0] = new_admin.inner;
+
+    context.call_public_function(self.address, FunctionSelector::from_field(0x41b90896), serialized_args)
   }
   
 }

@@ -8,7 +8,7 @@ use dep::aztec::{
         note_header::NoteHeader,
         note_interface::NoteInterface,
     },
-    types::address::AztecAddress
+    protocol_types::address::AztecAddress
 };
 
 use dep::std::ec::tecurve::affine::Point;
@@ -66,16 +66,16 @@ impl ConfigNote {
 
     /// @notice serialize the note
     fn serialize(self) -> [Field; CONFIG_NOTE_LEN] {
-        [self.divinity.address, self.divinity_bjj_public_key.point.x, self.divinity_bjj_public_key.point.y, self.private_oracle.address, self.token.address, self.bet_amount]
+        [self.divinity.to_field(), self.divinity_bjj_public_key.point.x, self.divinity_bjj_public_key.point.y, self.private_oracle.to_field(), self.token.to_field(), self.bet_amount]
     }
 
     /// @notice deserialize the note
     fn deserialize(preimage: [Field; CONFIG_NOTE_LEN]) -> Self {
         ConfigNote {
-            divinity: AztecAddress::new(preimage[0]),
+            divinity: AztecAddress::from_field(preimage[0]),
             divinity_bjj_public_key: AffinePoint::new(Point::new(preimage[1], preimage[2])),
-            private_oracle: AztecAddress::new(preimage[3]),
-            token: AztecAddress::new(preimage[4]),
+            private_oracle: AztecAddress::from_field(preimage[3]),
+            token: AztecAddress::from_field(preimage[4]),
             bet_amount: preimage[5],
             header: NoteHeader::empty(),
         }
@@ -84,17 +84,22 @@ impl ConfigNote {
     /// @notice compute the note hash
     fn compute_note_hash(self) -> Field {
         dep::std::hash::pedersen_hash([
-            self.divinity.address,
+            self.divinity.to_field(),
             self.divinity_bjj_public_key.point.x,
             self.divinity_bjj_public_key.point.y,
-            self.private_oracle.address,
-            self.token.address,
+            self.private_oracle.to_field(),
+            self.token.to_field(),
             self.bet_amount
         ])
     }
 
     /// @notice this note isn't nullifiable, returns 0
-    fn compute_nullifier(self) -> Field {
+    fn compute_nullifier(self, _context: &mut PrivateContext) -> Field {
+        self.compute_nullifier_without_context()
+    }
+
+    /// @notice this note isn't nullifiable, returns 0
+    fn compute_nullifier_without_context(self) -> Field {
          let _ = self; // Avoid compiler warning (same # acir opcodes and backend size)
          0
     }
@@ -129,8 +134,12 @@ fn compute_note_hash(note: ConfigNote) -> Field {
     note.compute_note_hash()
 }
 
-fn compute_nullifier(note: ConfigNote) -> Field {
-    note.compute_nullifier()
+fn compute_nullifier(note: ConfigNote, context: &mut PrivateContext) -> Field {
+    note.compute_nullifier(context)
+}
+
+fn compute_nullifier_without_context(note: ConfigNote) -> Field {
+    note.compute_nullifier_without_context()
 }
 
 fn get_header(note: ConfigNote) -> NoteHeader {
@@ -150,6 +159,7 @@ global ConfigNoteMethods = NoteInterface {
     serialize,
     compute_note_hash,
     compute_nullifier,
+    compute_nullifier_without_context,
     get_header,
     set_header,
     broadcast,

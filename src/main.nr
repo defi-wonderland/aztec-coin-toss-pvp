@@ -47,7 +47,7 @@ contract CoinToss {
         types::type_serialization::{
             field_serialization::{FieldSerializationMethods, FIELD_SERIALIZED_LEN},
             bool_serialization::{BoolSerializationMethods, BOOL_SERIALIZED_LEN},
-            aztec_address_serialization::{AztecAddressSerializationMethods, AZTEC_ADDRESS_SERIALIZED_LEN},
+            address_serialization::{AddressSerializationMethods, AZTEC_ADDRESS_SERIALIZED_LEN},
         },
         note::{
             note_getter_options::NoteGetterOptions,
@@ -57,17 +57,18 @@ contract CoinToss {
         },
         oracle::{
             get_public_key::get_public_key,
-            get_secret_key::get_secret_key,
             rand::rand
         },
-        selector::compute_selector,
         state_vars::{
             immutable_singleton::ImmutableSingleton,
             set::Set,
             map::Map, 
             public_state::PublicState
         },
-        types::address::AztecAddress,
+        protocol_types::{
+            address::AztecAddress,
+            abis::function_selector::FunctionSelector,
+        }
     };
 
     use dep::std::option::Option;
@@ -117,9 +118,9 @@ contract CoinToss {
         oracle_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
         divinity_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
         token_address: PublicState<AztecAddress, AZTEC_ADDRESS_SERIALIZED_LEN>,
-        results: Map<PublicState<bool, BOOL_SERIALIZED_LEN>>,
-        rounds: Map<PublicState<RoundData, ROUND_DATA_SERIALIZED_LEN>>,
-        number_of_tails: Map<PublicState<ElgamalAffinePoints, ELGAMAL_AFFINE_POINTS_SERIALIZED_LEN>>,
+        results: Map<Field, PublicState<bool, BOOL_SERIALIZED_LEN>>,
+        rounds: Map<Field, PublicState<RoundData, ROUND_DATA_SERIALIZED_LEN>>,
+        number_of_tails: Map<Field, PublicState<ElgamalAffinePoints, ELGAMAL_AFFINE_POINTS_SERIALIZED_LEN>>,
         divinity_bjj_public_key: PublicState<AffinePoint, AFFINE_POINT_SERIALIZED_LEN>,
 
         ///////////////////////////// private //////////////////////////
@@ -134,9 +135,9 @@ contract CoinToss {
                 round_id: PublicState::new(context, ROUND_ID_SLOT, FieldSerializationMethods),
                 phase_length: PublicState::new(context, PHASE_LENGTH_SLOT, FieldSerializationMethods),
                 bet_amount: PublicState::new(context, BET_AMOUNT_SLOT, FieldSerializationMethods),
-                oracle_address: PublicState::new(context, ORACLE_ADDRESS_SLOT, AztecAddressSerializationMethods),
-                divinity_address: PublicState::new(context, DIVINITY_ADDRESS_SLOT, AztecAddressSerializationMethods),
-                token_address: PublicState::new(context, TOKEN_ADDRESS_SLOT, AztecAddressSerializationMethods),
+                oracle_address: PublicState::new(context, ORACLE_ADDRESS_SLOT, AddressSerializationMethods),
+                divinity_address: PublicState::new(context, DIVINITY_ADDRESS_SLOT, AddressSerializationMethods),
+                token_address: PublicState::new(context, TOKEN_ADDRESS_SLOT, AddressSerializationMethods),
                 results: Map::new( 
                     context,
                     RESULTS_SLOT,
@@ -203,14 +204,14 @@ contract CoinToss {
         let mut config_note = ConfigNote::new(divinity, divinity_bjj_public_key, private_oracle, token, bet_amount);
         storage.config.initialize(&mut config_note, Option::none(), false);
 
-        let selector = compute_selector("_initialize(Field,Field,(Field),(Field),(Field))");
-        context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.address, divinity.address, token.address]);
+        let selector = FunctionSelector::from_signature("_initialize(Field,Field,(Field),(Field),(Field))");
+        context.call_public_function(context.this_address(), selector, [phase_length, bet_amount, private_oracle.to_field(), divinity.to_field(), token.to_field()]);
 
         assert(noir_elgamal::is_valid_subgroup(divinity_bjj_public_key.point), "Invalid divinity public key - are you really in bjj field?");
 
         // ensure function selector remains correct in later dev stage
         assert(AFFINE_POINT_SERIALIZED_LEN == 2);
-        let selector2 = compute_selector("_init_bjj([Field;2])");
+        let selector2 = FunctionSelector::from_signature("_init_bjj([Field;2])");
         context.call_public_function(context.this_address(), selector2, divinity_bjj_public_key.serialize());
     }
 
@@ -354,7 +355,7 @@ contract CoinToss {
         assert(expected_plain_embedded.eq(divinity_plain_embedded));
         
         /// Checks that the caller is the oracle
-        assert(caller == oracle.address, "Caller is not the oracle");
+        assert(caller == oracle.to_field(), "Caller is not the oracle");
 
         /// Checks that the round id is the current one
         let current_round_id = storage.round_id.read();
@@ -450,7 +451,7 @@ contract CoinToss {
             encrypted_zero_c2.y
         ];
 
-        let selector_update_bet_stats = compute_selector("_start_next_round([Field;2],[Field;2])");
+        let selector_update_bet_stats = FunctionSelector::from_signature("_start_next_round([Field;2],[Field;2])");
         context.call_public_function(context.this_address(), selector_update_bet_stats, serialized_calldata);
     } 
 
@@ -465,15 +466,15 @@ contract CoinToss {
         let config_note = storage.config.get_note();
         let token = config_note.token;
         let bet_amount = config_note.bet_amount;
-        let bettor = AztecAddress::new(context.msg_sender());
-        let address_this = AztecAddress::new(context.this_address());
-        let token = TokenPrivateContextInterface::at(token.address);
+        let bettor = context.msg_sender();
+        let address_this = context.this_address();
+        let token = TokenPrivateContextInterface::at(token);
 
         // Unshield private balance from the user to the coin toss. This requires an authwit.
         let _ = token.unshield(
             &mut context,
-            FromUnshieldStruct { address: bettor.address }, 
-            ToUnshieldStruct {address: address_this.address }, 
+            FromUnshieldStruct { inner: bettor.to_field() }, 
+            ToUnshieldStruct { inner: address_this.to_field() }, 
             bet_amount, 
             unshield_nonce
         );
@@ -482,7 +483,7 @@ contract CoinToss {
         let mut user_bet: BetNote = BetNote::new(&mut context, bettor, round_id, bet, bet_randomness);
         storage.bets.insert(&mut user_bet, true);
 
-        let selector_increase_bettors = compute_selector("_increase_bettors(Field)");
+        let selector_increase_bettors = FunctionSelector::from_signature("_increase_bettors(Field)");
         context.call_public_function(context.this_address(), selector_increase_bettors, [round_id]);
 
         let divinity_bjj_key = config_note.divinity_bjj_public_key;
@@ -497,7 +498,7 @@ contract CoinToss {
             encrypted_bet_c2.y
         ];
 
-        let selector_update_bet_stats = compute_selector("_update_cumsum(Field,[Field;2],[Field;2])");
+        let selector_update_bet_stats = FunctionSelector::from_signature("_update_cumsum(Field,[Field;2],[Field;2])");
         context.call_public_function(context.this_address(), selector_update_bet_stats, serialized_calldata);
     }
 
@@ -508,33 +509,33 @@ contract CoinToss {
     /// @param          encrypted_tail_sum The points composing number_of_tails state variable at the moment of calling this function
     #[aztec(private)]
     fn roll(round_id: Field, oracle_nonce: Field, encrypted_tail_sum: ElgamalAffinePoints) {
-        let sender = AztecAddress::new(context.msg_sender());
+        let sender = context.msg_sender();
         let config_note = storage.config.get_note();
         let divinity = config_note.divinity;
         let oracle = config_note.private_oracle;
-        let oracle_contract = PrivateOraclePrivateContextInterface::at(oracle.address);
-        let address_this = AztecAddress::new(context.this_address());
+        let oracle_contract = PrivateOraclePrivateContextInterface::at(oracle);
+        let address_this = context.this_address();
         let encrypted_sum_serialized = encrypted_tail_sum.serialize();
 
         // Create the question in the oracle
-        let callback = [address_this.address, round_id, encrypted_sum_serialized[0], encrypted_sum_serialized[1], encrypted_sum_serialized[2], encrypted_sum_serialized[3]];
+        let callback = [address_this.to_field(), round_id, encrypted_sum_serialized[0], encrypted_sum_serialized[1], encrypted_sum_serialized[2], encrypted_sum_serialized[3]];
         let __ = oracle_contract.submit_question(
             &mut context,
-            FromSubmitQuestionStruct { address: sender.address },
+            FromSubmitQuestionStruct { inner: sender.to_field() },
             round_id,
-            DivinityAddressSubmitQuestionStruct { address: divinity.address },
+            DivinityAddressSubmitQuestionStruct { inner: divinity.to_field() },
             oracle_nonce,
             callback
         );
 
         // End the bet phase and update public state
         // This checks that the round id is correct and that the phase is BETTING
-        let selector = compute_selector("_end_bet_phase(Field)");
+        let selector = FunctionSelector::from_signature("_end_bet_phase(Field)");
         context.call_public_function(context.this_address(), selector, [round_id]);
 
         context.call_public_function(
             context.this_address(), 
-            compute_selector("_validate_encrypted_tail_sum([Field;4])"), 
+            FunctionSelector::from_signature("_validate_encrypted_tail_sum([Field;4])"), 
             [encrypted_sum_serialized[0], encrypted_sum_serialized[1], encrypted_sum_serialized[2], encrypted_sum_serialized[3]]
         );
     }
@@ -556,13 +557,13 @@ contract CoinToss {
         let divinity_address_config = storage.config.get_note().divinity;
         let divinity_cumsum = (Point::new(data[1], data[2]), Point::new(data[3], data[4]));
 
-        assert(divinity_address_config.address == divinity_address.address, "Caller is not the designated divinity");
+        assert(divinity_address_config.eq(divinity_address), "Caller is not the designated divinity");
 
         let divinity_public_key: Point = noir_elgamal::priv_to_pub_key(private_key);
         let divinity_plain_embedded: Point = noir_elgamal::exp_elgamal_decrypt(private_key, divinity_cumsum);
 
-        let selector = compute_selector("_set_result(Field,Field,[Field;2],[Field;4],[Field;2],[Field;2])");
-        context.call_public_function(context.this_address(), selector, [context.msg_sender(), round_id, coin_toss_result, bet_sum_plaintext, data[1], data[2], data[3], data[4], divinity_plain_embedded.x, divinity_plain_embedded.y, divinity_public_key.x, divinity_public_key.y]);
+        let selector = FunctionSelector::from_signature("_set_result(Field,Field,[Field;2],[Field;4],[Field;2],[Field;2])");
+        context.call_public_function(context.this_address(), selector, [context.msg_sender().to_field(), round_id, coin_toss_result, bet_sum_plaintext, data[1], data[2], data[3], data[4], divinity_plain_embedded.x, divinity_plain_embedded.y, divinity_public_key.x, divinity_public_key.y]);
     }
 
     /// @notice         Called by the user to claim their winnings
@@ -573,9 +574,9 @@ contract CoinToss {
     #[aztec(private)]
     fn claim(round_id: Field, amount: Field, user_randomness: Field) {
         let config_note = storage.config.get_note();
-        let token = TokenPrivateContextInterface::at(config_note.token.address);
-        let bettor = AztecAddress::new(context.msg_sender());
-        let address_this = AztecAddress::new(context.this_address());
+        let token = TokenPrivateContextInterface::at(config_note.token);
+        let bettor = context.msg_sender();
+        let address_this = context.this_address();
         let options = NoteGetterOptions::new().select(1, round_id).select(3, user_randomness).set_limit(1);
         let bet_notes = storage.bets.get_notes(options);
 
@@ -589,13 +590,13 @@ contract CoinToss {
             // Shields privately to the user
             let _ = token.shield_private(
                 &mut context,
-                FromShieldPrivateStruct { address: address_this.address }, 
-                ToShieldPrivateStruct {address: bettor.address }, 
+                FromShieldPrivateStruct { inner: address_this.to_field() }, 
+                ToShieldPrivateStruct { inner: bettor.to_field() }, 
                 amount, 
                 0
             );
 
-            let selector = compute_selector("_validate_claim(Field,Field,Field)");
+            let selector = FunctionSelector::from_signature("_validate_claim(Field,Field,Field)");
             context.call_public_function(context.this_address(), selector, [round_id, amount, user_bet as Field]);
         } else {
             assert(false, "Bet note not found");
@@ -611,7 +612,7 @@ contract CoinToss {
     /// @notice         Gets the config note
     /// @custom:privacy unconstrained
     /// @return         The config note (divinity, private oracle, token, bet_amount)
-    unconstrained fn get_config_unconstrained() -> ConfigNote {
+    unconstrained fn get_config_unconstrained() -> pub ConfigNote {
         storage.config.view_note()
     }
 
@@ -619,7 +620,7 @@ contract CoinToss {
     /// @custom:privacy unconstrained
     /// @param          start_offset The offset to start from
     /// @return         The bet notes (padded with empty notes, up to 10)
-    unconstrained fn get_user_bets_unconstrained(start_offset: u32) -> [Option<BetNote>; 10] {
+    unconstrained fn get_user_bets_unconstrained(start_offset: u32) -> pub [Option<BetNote>; 10] {
         let user_bets_getter_option = NoteViewerOptions::new().set_offset(start_offset);
         storage.bets.view_notes(user_bets_getter_option)
     }
@@ -631,7 +632,7 @@ contract CoinToss {
     /// @param          storage_slot The storage slot of the note
     /// @param          preimage The preimage of the note
     /// @return         The note hash and nullifier
-    unconstrained fn compute_note_hash_and_nullifier(contract_address: Field, nonce: Field, storage_slot: Field, preimage: [Field; CONFIG_NOTE_LEN]) -> [Field; 4] {
+    unconstrained fn compute_note_hash_and_nullifier(contract_address: AztecAddress, nonce: Field, storage_slot: Field, preimage: [Field; CONFIG_NOTE_LEN]) -> pub [Field; 4] {
         let note_header = NoteHeader::new(contract_address, nonce, storage_slot);
 
         if(storage_slot == BETS_SLOT) {
@@ -642,42 +643,42 @@ contract CoinToss {
     }
 
     /// @notice         Returns the phase length
-    unconstrained fn get_phase_length_unconstrained() -> Field {
+    unconstrained fn get_phase_length_unconstrained() -> pub Field {
         storage.phase_length.read()
     }
 
     /// @notice         Returns the bet amount
-    unconstrained fn get_bet_amount_unconstrained() -> Field {
+    unconstrained fn get_bet_amount_unconstrained() -> pub Field {
         storage.bet_amount.read()
     }
 
     /// @notice         Returns the oracle address
-    unconstrained fn get_oracle_address_unconstrained() -> AztecAddress {
-        storage.oracle_address.read()
+    unconstrained fn get_oracle_address_unconstrained() -> pub Field {
+        storage.oracle_address.read().to_field()
     }
 
     /// @notice         Returns the divinity address
-    unconstrained fn get_divinity_address_unconstrained() -> AztecAddress {
-        storage.divinity_address.read()
+    unconstrained fn get_divinity_address_unconstrained() -> pub Field {
+        storage.divinity_address.read().to_field()
     }
 
     /// @notice         Returns the token address
-    unconstrained fn get_token_address_unconstrained() -> AztecAddress {
-        storage.token_address.read()
+    unconstrained fn get_token_address_unconstrained() -> pub Field {
+        storage.token_address.read().to_field()
     }
 
     /// @notice         Returns the round id
-    unconstrained fn get_round_id() -> Field {
+    unconstrained fn get_round_id() -> pub Field {
         storage.round_id.read()
     }
 
     /// @notice         Returns the round data for a given round id
-    unconstrained fn get_round_data(round_id: Field) -> RoundData {
+    unconstrained fn get_round_data(round_id: Field) -> pub RoundData {
         storage.rounds.at(round_id).read()
     }
 
     /// @notice         Returns the result for a given round id
-    unconstrained fn get_result(round_id: Field) -> bool {
+    unconstrained fn get_result(round_id: Field) -> pub bool {
         storage.results.at(round_id).read()
     }
 
@@ -686,7 +687,7 @@ contract CoinToss {
     /// @param          round_id The id of the round this bet was made in
     /// @param          randomness The randomness the user used for this bet in this round
     /// @return         A boolean indicating whether a bet with this combination of fields has been initialized or not
-    unconstrained fn is_round_randomness_nullified(round_id: Field, randomness: Field) -> bool {
+    unconstrained fn is_round_randomness_nullified(round_id: Field, randomness: Field) -> pub bool {
         BetNote::is_round_randomness_nullified(round_id, randomness)
     }
 }
