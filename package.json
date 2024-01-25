@@ -4,7 +4,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "compile": "aztec-nargo compile && aztec-cli codegen target -o src/artifacts --nr && aztec-cli codegen target -o src/artifacts --ts",
+    "codegen:oracle": "aztec-cli codegen src/artifacts/PrivateOracle.json -o src/artifacts/oracle --nr && aztec-cli codegen src/artifacts/PrivateOracle.json -o src/artifacts/oracle --ts",
+    "codegen:token": "aztec-cli codegen src/artifacts/Token.json -o src/artifacts/token --nr && aztec-cli codegen src/artifacts/Token.json -o src/artifacts/token --ts",
+    "compile": "aztec-nargo compile && aztec-cli codegen target -o src/artifacts/cointoss --nr && aztec-cli codegen target -o src/artifacts/cointoss --ts && yarn codegen:oracle && yarn codegen:token",
     "test": "yarn compile && NODE_NO_WARNINGS=1 node --experimental-vm-modules $(yarn bin jest) --runInBand --passWithNoTests --testTimeout=50000"
   },
   "jest": {

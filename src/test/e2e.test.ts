@@ -18,9 +18,9 @@ import {
 } from "@aztec/aztec.js";
 
 import { BetNote } from "./Notes.js";
-import { CoinTossContract } from "../artifacts/CoinToss.js";
-import { TokenContract } from "../artifacts/Token.js";
-import { PrivateOracleContract } from "../artifacts/PrivateOracle.js";
+import { CoinTossContract } from "../artifacts/cointoss/CoinToss.js";
+import { TokenContract } from "../artifacts/token/Token.js";
+import { PrivateOracleContract } from "../artifacts/oracle/PrivateOracle.js";
 import { createAccount, getInitialTestAccountsWallets } from "@aztec/accounts/testing";
 import { getUnsafeSchnorrAccount } from "@aztec/accounts/single_key";
 
