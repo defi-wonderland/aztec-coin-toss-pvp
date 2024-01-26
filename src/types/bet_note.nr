@@ -12,16 +12,14 @@ use dep::aztec::{
     },
     oracle::{
         get_public_key::get_public_key,
-        get_secret_key::get_secret_key,
         notes::check_nullifier_exists,
         notes::check_nullifier_exists_oracle,
         rand::rand,
     },
-    types::address::AztecAddress
 };
 
-use dep::protocol_types::{
-    constants::EMPTY_NULLIFIED_COMMITMENT,
+use dep::aztec::protocol_types::{
+    address::AztecAddress,
 };
 
 use dep::std::option::Option;
@@ -62,7 +60,7 @@ impl BetNote {
         // Nullify round id and randomness combination
         let compute_initialization_nullifier = BetNote::generate_round_randomness_nullifier;
         let nullifier = compute_initialization_nullifier(_round_id, _randomness);
-        _context.push_new_nullifier(nullifier, EMPTY_NULLIFIED_COMMITMENT);
+        _context.push_new_nullifier(nullifier, 0);
 
         BetNote {
             owner: _owner,
@@ -95,13 +93,13 @@ impl BetNote {
 
     /// @notice Serializes the note
     fn serialize(self) -> [Field; BET_NOTE_LEN] {
-        [self.owner.address, self.round_id, self.bet as Field, self.randomness]
+        [self.owner.to_field(), self.round_id, self.bet as Field, self.randomness]
     }
 
     /// @notice Deserializes the note
     fn deserialize(preimage: [Field; BET_NOTE_LEN]) -> Self {
         BetNote {
-            owner: AztecAddress::new(preimage[0]),
+            owner: AztecAddress::from_field(preimage[0]),
             round_id: preimage[1],
             bet: preimage[2] as bool,
             randomness: preimage[3],
@@ -112,7 +110,7 @@ impl BetNote {
     /// @notice Computes the note hash of the note
     fn compute_note_hash(self) -> Field {
         dep::std::hash::pedersen_hash([
-            self.owner.address,
+            self.owner.to_field(),
             self.round_id,
             self.bet as Field,
             self.randomness
@@ -121,7 +119,13 @@ impl BetNote {
 
     /// @notice Computes the nullifier of the note
     /// @dev    This is a pretty standard nullifier computation, using the round_id as the key
-    fn compute_nullifier(self) -> Field {
+    fn compute_nullifier(self, _context: &mut PrivateContext) -> Field {
+        self.compute_nullifier_without_context()
+    }
+
+    /// @notice Computes the nullifier of the note
+    /// @dev    This is a pretty standard nullifier computation, using the round_id as the key
+    fn compute_nullifier_without_context(self) -> Field {
         let note_hash_for_nullify = compute_note_hash_for_read_or_nullify(BetNoteMethods, self);
         let nullifier_key = self.round_id;
 
@@ -138,7 +142,7 @@ impl BetNote {
 
     /// @notice Emit the note creation event using the owner public key
     fn broadcast(self, context: &mut PrivateContext, slot: Field) {
-        let encryption_pub_key = get_public_key(self.owner.address);
+        let encryption_pub_key = get_public_key(self.owner);
         emit_encrypted_log(
             context,
             (*context).this_address(),
@@ -165,8 +169,12 @@ fn compute_note_hash(note: BetNote) -> Field {
     note.compute_note_hash()
 }
 
-fn compute_nullifier(note: BetNote) -> Field {
-    note.compute_nullifier()
+fn compute_nullifier(note: BetNote, context: &mut PrivateContext) -> Field {
+    note.compute_nullifier(context)
+}
+
+fn compute_nullifier_without_context(note: BetNote) -> Field {
+    note.compute_nullifier_without_context()
 }
 
 fn get_header(note: BetNote) -> NoteHeader {
@@ -186,6 +194,7 @@ global BetNoteMethods = NoteInterface {
     serialize,
     compute_note_hash,
     compute_nullifier,
+    compute_nullifier_without_context,
     get_header,
     set_header,
     broadcast,

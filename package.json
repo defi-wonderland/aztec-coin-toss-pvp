@@ -4,7 +4,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "compile": "aztec-cli compile . -o './src/artifacts' -i './src/artifacts' -ts './src/artifacts'",
+    "codegen:oracle": "aztec-cli codegen src/artifacts/PrivateOracle.json -o src/artifacts/oracle --nr && aztec-cli codegen src/artifacts/PrivateOracle.json -o src/artifacts/oracle --ts",
+    "codegen:token": "aztec-cli codegen src/artifacts/Token.json -o src/artifacts/token --nr && aztec-cli codegen src/artifacts/Token.json -o src/artifacts/token --ts",
+    "compile": "aztec-nargo compile && aztec-cli codegen target -o src/artifacts/cointoss --nr && aztec-cli codegen target -o src/artifacts/cointoss --ts && yarn codegen:oracle && yarn codegen:token",
     "test": "yarn compile && NODE_NO_WARNINGS=1 node --experimental-vm-modules $(yarn bin jest) --runInBand --passWithNoTests --testTimeout=50000"
   },
   "jest": {
@@ -24,9 +26,10 @@
     "rootDir": "./src"
   },
   "dependencies": {
-    "@aztec/aztec.js": "0.16.9",
-    "@aztec/foundation": "0.16.9",
-    "@aztec/types": "0.16.9",
+    "@aztec/aztec.js": "0.20.0",
+    "@aztec/foundation": "0.20.0",
+    "@aztec/types": "0.20.0",
+    "@aztec/accounts": "0.20.0",
     "@types/jest": "^29.5.5",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.1",

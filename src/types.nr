@@ -3,6 +3,5 @@ mod config_note;
 mod token;
 mod oracle;
 mod round_data;
-mod reveal_note;
 mod affine_point;
 mod elgamal_affine_points;

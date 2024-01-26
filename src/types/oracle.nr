@@ -2,28 +2,32 @@
   
 use dep::std;
 use dep::aztec::context::{ PrivateContext, PublicContext };
-use dep::protocol_types::constants::RETURN_VALUES_LENGTH;
-
-struct RequesterSubmitAnswerStruct {
-  address: Field,
-}
+use dep::aztec::protocol_types::{
+  address::AztecAddress,
+  abis::function_selector::FunctionSelector,
+  constants::RETURN_VALUES_LENGTH,
+};
 
 struct FromSubmitQuestionStruct {
-  address: Field,
+  inner: Field,
 }
 
 struct DivinityAddressSubmitQuestionStruct {
-  address: Field,
+  inner: Field,
+}
+
+struct RequesterSubmitAnswerStruct {
+  inner: Field,
 }
 
 
 // Interface for calling PrivateOracle functions from a private context
 struct PrivateOraclePrivateContextInterface {
-  address: Field,
+  address: AztecAddress,
 }
 
 impl PrivateOraclePrivateContextInterface {
-  pub fn at(address: Field) -> Self {
+  pub fn at(address: AztecAddress) -> Self {
       Self {
           address,
       }
@@ -37,51 +41,7 @@ impl PrivateOraclePrivateContextInterface {
     let mut serialized_args = [0; 1];
     serialized_args[0] = question;
 
-    context.call_private_function(self.address, 0x7d126cd4, serialized_args)
-  }
-  
-
-  pub fn consult_answer(
-    self,
-    context: &mut PrivateContext,
-    question: Field
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 1];
-    serialized_args[0] = question;
-
-    context.call_private_function(self.address, 0x907da598, serialized_args)
-  }
-  
-
-  pub fn initialize_payment_token(
-    self,
-    context: &mut PrivateContext,
-    payment_token: Field,
-    fee: Field
-  ) {
-    let mut serialized_args = [0; 2];
-    serialized_args[0] = payment_token;
-    serialized_args[1] = fee;
-
-    context.call_public_function(self.address, 0x233e29de, serialized_args)
-  }
-  
-
-  pub fn submit_answer(
-    self,
-    context: &mut PrivateContext,
-    question: Field,
-    requester: RequesterSubmitAnswerStruct,
-    answer: [Field;3]
-  ) -> [Field; RETURN_VALUES_LENGTH] {
-    let mut serialized_args = [0; 5];
-    serialized_args[0] = question;
-    serialized_args[1] = requester.address;
-    serialized_args[2] = answer[0];
-    serialized_args[3] = answer[1];
-    serialized_args[4] = answer[2];
-
-    context.call_private_function(self.address, 0xe9e92c15, serialized_args)
+    context.call_private_function(self.address, FunctionSelector::from_field(0x7d126cd4), serialized_args)
   }
   
 
@@ -95,9 +55,9 @@ impl PrivateOraclePrivateContextInterface {
     callback: [Field;6]
   ) -> [Field; RETURN_VALUES_LENGTH] {
     let mut serialized_args = [0; 10];
-    serialized_args[0] = from.address;
+    serialized_args[0] = from.inner;
     serialized_args[1] = question;
-    serialized_args[2] = divinity_address.address;
+    serialized_args[2] = divinity_address.inner;
     serialized_args[3] = nonce;
     serialized_args[4] = callback[0];
     serialized_args[5] = callback[1];
@@ -106,7 +66,71 @@ impl PrivateOraclePrivateContextInterface {
     serialized_args[8] = callback[4];
     serialized_args[9] = callback[5];
 
-    context.call_private_function(self.address, 0xb9d88bb1, serialized_args)
+    context.call_private_function(self.address, FunctionSelector::from_field(0xb9d88bb1), serialized_args)
+  }
+  
+
+  pub fn initialize_payment_token(
+    self,
+    context: &mut PrivateContext,
+    payment_token: Field,
+    fee: Field
+  ) {
+    let mut serialized_args = [0; 2];
+    serialized_args[0] = payment_token;
+    serialized_args[1] = fee;
+
+    context.call_public_function(self.address, FunctionSelector::from_field(0x233e29de), serialized_args)
+  }
+  
+
+  pub fn get_private_payment_token(
+    self,
+    context: &mut PrivateContext
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 0];
+
+    context.call_private_function(self.address, FunctionSelector::from_field(0x2737d8ce), serialized_args)
+  }
+  
+
+  pub fn get_private_fee(
+    self,
+    context: &mut PrivateContext
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 0];
+
+    context.call_private_function(self.address, FunctionSelector::from_field(0x9dc0bd99), serialized_args)
+  }
+  
+
+  pub fn consult_answer(
+    self,
+    context: &mut PrivateContext,
+    question: Field
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 1];
+    serialized_args[0] = question;
+
+    context.call_private_function(self.address, FunctionSelector::from_field(0x907da598), serialized_args)
+  }
+  
+
+  pub fn submit_answer(
+    self,
+    context: &mut PrivateContext,
+    question: Field,
+    requester: RequesterSubmitAnswerStruct,
+    answer: [Field;3]
+  ) -> [Field; RETURN_VALUES_LENGTH] {
+    let mut serialized_args = [0; 5];
+    serialized_args[0] = question;
+    serialized_args[1] = requester.inner;
+    serialized_args[2] = answer[0];
+    serialized_args[3] = answer[1];
+    serialized_args[4] = answer[2];
+
+    context.call_private_function(self.address, FunctionSelector::from_field(0xe9e92c15), serialized_args)
   }
   
 }
@@ -116,11 +140,11 @@ impl PrivateOraclePrivateContextInterface {
 
 // Interface for calling PrivateOracle functions from a public context
 struct PrivateOraclePublicContextInterface {
-  address: Field,
+  address: AztecAddress,
 }
 
 impl PrivateOraclePublicContextInterface {
-  pub fn at(address: Field) -> Self {
+  pub fn at(address: AztecAddress) -> Self {
       Self {
           address,
       }
@@ -136,7 +160,7 @@ impl PrivateOraclePublicContextInterface {
     serialized_args[0] = payment_token;
     serialized_args[1] = fee;
 
-    context.call_public_function(self.address, 0x233e29de, serialized_args)
+    context.call_public_function(self.address, FunctionSelector::from_field(0x233e29de), serialized_args)
   }
   
 }
